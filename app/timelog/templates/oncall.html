@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% from "_macros.html" import month_nav, sheet_actions, sheet_meta, status_badge, submit_fields with context %}
+{% block title %}On-call {{ month_label(year, month) }}{% endblock %}
+{% block content %}
+{% set extra = "" if own else "?user_id=" ~ target.id %}
+<div class="page-head">
+  <div>
+    <span class="eyebrow">On-call duty</span>
+    <h1>{{ target.full_name if not own else "My on-call" }}{% if is_expert %} <span class="tag">Expert</span>{% endif %}</h1>
+  </div>
+  {{ month_nav("/oncall", year, month, extra) }}
+</div>
+
+<div class="stats stagger">
+  <div class="stat accent"><span class="label">Status</span><span class="value">{{ status_badge(sheet) }}</span></div>
+  <div class="stat"><span class="label">On-call days</span><span class="value js-days-stat">{{ rows|selectattr("row")|list|length }}</span></div>
+  {% if show_amounts %}
+  <div class="stat"><span class="label">Stipend</span><span class="value"><span data-count="{{ total }}" data-decimals="2">{{ total|money }}</span><span class="unit">{{ settings.currency }}</span></span></div>
+  {% else %}
+  <div class="stat"><span class="label">Interventions</span><span class="value">{{ interventions }}</span></div>
+  {% endif %}
+</div>
+
+{% if sheet and (sheet.submitted_at or sheet.decision_comment or can_decide or can_withdraw or can_reopen) %}
+<section class="card sheet-block status-{{ sheet.status }}">
+  <div class="meta">{{ sheet_meta(sheet) }}</div>
+  {{ sheet_actions(sheet, can_withdraw, can_decide, can_reopen, csrf) }}
+</section>
+{% endif %}
+
+{% if editable %}
+<p class="help">
+  Use the <strong>week</strong> switch to book a whole rotation week ({{ week_start_name }} → {{ week_end_name }}) in one click, or tick individual days. {% if is_expert %}Tick <strong>Intervention</strong> when you were called: the daily rate is then doubled.{% else %}If you were called, log the intervention (hours, incident #, description) on your <a href="/overtime/{{ year }}/{{ month }}">overtime sheet</a>: entries on your on-call days are recognised automatically and shown in the <strong>Intervention</strong> column.{% endif %}
+</p>
+{% elif not own %}
+<p class="help"><a href="/overtime/{{ year }}/{{ month }}?user_id={{ target.id }}">View overtime sheet &rarr;</a></p>
+{% endif %}
+
+<form method="post" action="/oncall/{{ year }}/{{ month }}" id="oncall-form">
+<input type="hidden" name="csrf_token" value="{{ csrf }}">
+<div class="table-wrap">
+{% set rates = {"W": grade.rate_weekday|float, "SAT": grade.rate_saturday|float, "SUN": grade.rate_sunday|float, "H": grade.rate_holiday|float} if show_amounts else none %}
+<table class="table grid animate" id="oncall-grid" data-expert="{{ '1' if is_expert else '0' }}" data-rates='{{ rates|tojson if rates else "" }}'>
+  <thead>
+    <tr><th scope="col">Rotation week</th><th scope="col">Date</th><th scope="col">Day</th><th scope="col">Type</th><th scope="col" class="c">On-call</th><th scope="col" class="c">Intervention</th>{% if is_expert %}<th scope="col">Incident #</th><th scope="col" class="col-comment">Comment</th>{% endif %}{% if show_amounts %}<th scope="col" class="r">Amount</th>{% endif %}</tr>
+  </thead>
+  <tbody>
+  {% for r in rows %}
+    {% set key = r.date.isoformat() %}{% set d = r.row %}
+    <tr class="dt-{{ r.day_type }}{% if d %} on{% endif %}{% if r.week %} week-first{% endif %}" data-type="{{ r.day_type }}" data-week="{{ r.week_key }}">
+      {% if r.week %}{% set w = r.week %}
+      <td rowspan="{{ w.rowspan }}" class="week-cell">
+        <label class="switch" title="Book the whole rotation week {{ w.start|date }} → {{ w.end|date }}">
+          <input type="checkbox" class="js-week" name="wk_{{ r.week_key }}" value="1" data-week="{{ r.week_key }}" data-spill="{{ '1' if w.spill else '0' }}" {% if w.on %}checked{% endif %} {% if not editable %}disabled{% endif %}>
+          <span class="track"><span class="thumb"></span></span>
+          <span class="week-label"><strong>{{ w.start.strftime("%a %d/%m") }}</strong><span>→ {{ w.end.strftime("%a %d/%m") }}</span></span>
+        </label>
+        {% if w.spill %}<span class="spill" title="These days are booked on the {{ w.spill_dir }} month's sheet">+ {{ w.spill_label }} ({{ w.spill_dir }} month)</span>{% endif %}
+      </td>
+      {% endif %}
+      <td>{{ r.date|date }}</td>
+      <td>{{ r.date.strftime("%a") }}</td>
+      <td><span class="daytype dt-badge-{{ r.day_type }}">{{ DAY_TYPE_LABELS[r.day_type] }}</span>{% if r.holiday %} <span class="muted small">{{ r.holiday }}</span>{% endif %}</td>
+      <td class="c"><input type="checkbox" name="oc_{{ key }}" value="1" class="js-oc" {% if d %}checked{% endif %} {% if not editable %}disabled{% endif %} aria-label="On-call {{ r.date|date }}"></td>
+      {% if is_expert %}
+      <td class="c"><input type="checkbox" name="iv_{{ key }}" value="1" class="js-iv iv" {% if d and d.intervention %}checked{% endif %} {% if not editable %}disabled{% endif %} aria-label="Intervention {{ r.date|date }}"></td>
+      <td><label class="sr-only" for="in-{{ key }}">Incident number {{ r.date|date }}</label><input id="in-{{ key }}" name="in_{{ key }}" value="{{ d.incident_ref if d else '' }}" maxlength="128" class="w-sm" placeholder="{{ 'INC…' if editable else '' }}" {% if not editable %}disabled{% endif %}></td>
+      <td class="col-comment"><label class="sr-only" for="cm-{{ key }}">Comment {{ r.date|date }}</label><input id="cm-{{ key }}" name="cm_{{ key }}" value="{{ d.comment if d else '' }}" maxlength="500" {% if not editable %}disabled{% endif %}></td>
+      {% else %}
+      <td class="c">{% if r.ot_hours %}<a class="ot-chip" href="/overtime/{{ year }}/{{ month }}{{ extra }}" title="Overtime logged on this on-call day">{{ r.ot_hours|hours }} h</a>{% endif %}</td>
+      {% endif %}
+      {% if show_amounts %}<td class="r amount-cell js-amount">{% if d %}{{ d.amount|money }}{% endif %}</td>{% endif %}
+    </tr>
+  {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr>
+      <td colspan="4">Days · W {{ counts.get('W', 0) }} · Sat {{ counts.get('SAT', 0) }} · Sun {{ counts.get('SUN', 0) }} · H {{ counts.get('H', 0) }}</td>
+      <td class="c js-days">{{ rows|selectattr("row")|list|length }}</td>
+      <td class="c js-ivs">{{ interventions }}</td>
+      {% if is_expert %}<td colspan="2" class="r">{% if show_amounts %}Total {{ settings.currency }}{% endif %}</td>{% endif %}
+      {% if show_amounts %}<td class="r amount-cell">{% if not is_expert %}<span class="muted small">{{ settings.currency }}</span> {% endif %}<span class="js-total">{{ total|money }}</span></td>{% endif %}
+    </tr>
+  </tfoot>
+</table>
+</div>
+
+{% if editable %}
+<section class="card submit-panel">
+  {{ submit_fields(pending, submit_comment, "oc", has_saved_signature, True) }}
+  <div class="actions">
+    <button class="btn btn-ghost" name="action" value="save">Save draft</button>
+    <button class="btn btn-primary" name="action" value="submit" data-confirm="Submit your declaration (on-call and overtime) to your line manager for validation?">{{ "Save, sign & submit" if features.signature else "Save & submit for validation" }}</button>
+  </div>
+</section>
+{% endif %}
+</form>
+{% endblock %}

@@ -1,0 +1,18 @@
+# Keep the image free of local data and secrets
+.venv
+tests
+**/__pycache__
+.pytest_cache
+*.db
+*.sqlite*
+*.sql*
+*.xlsx
+*.csv
+.env*
+*.key
+*.pem
+*.crt
+*.csr
+*.log
+timelog/BUILD_TIMESTAMP
+timelog/BUILD_COMMIT

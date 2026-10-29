@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Audit log{% endblock %}
+{% block content %}
+{% include "admin/_nav.html" %}
+<h1>Audit log <span class="muted small">(last 500 events)</span></h1>
+<div class="table-wrap">
+<table class="table animate">
+  <thead><tr><th scope="col">When</th><th scope="col">Who</th><th scope="col">Action</th><th scope="col">Target</th><th scope="col">Details</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td>{{ r.at|datetime }}</td>
+      <td>{{ r.actor.username if r.actor else "system" }}</td>
+      <td>{{ r.action }}</td>
+      <td>{% if r.target_type == "sheet" and r.target_id %}<a href="/sheets/{{ r.target_id }}">sheet #{{ r.target_id }}</a>{% else %}{{ r.target_type }} {{ r.target_id or "" }}{% endif %}</td>
+      <td class="small mono">{{ r.details }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

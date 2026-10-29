@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_badge %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <span class="eyebrow">{{ month_label(today.year, today.month) }}</span>
+    <h1>Hello {{ user.first_name or user.full_name }}</h1>
+  </div>
+  <div class="actions">
+    <a class="btn btn-ghost" href="/oncall">Declare on-call</a>
+    {% if not user.is_expert %}<a class="btn btn-primary" href="/overtime">Log overtime</a>{% endif %}
+  </div>
+</div>
+
+{% if pending %}
+<div class="banner banner-info"><a href="/approvals">{{ pending }} sheet{{ 's' if pending > 1 }} waiting for your validation &rarr;</a></div>
+{% endif %}
+{% if not user.manager_id %}
+<div class="banner banner-error">No line manager is configured for your account: you will not be able to submit. Contact an administrator.</div>
+{% endif %}
+
+<div class="stats stagger">
+  <div class="stat accent"><span class="label">On-call days this month</span><span class="value"><span data-count="{{ stats.oncall_days }}">{{ stats.oncall_days }}</span></span></div>
+  {% if show_amounts %}<div class="stat"><span class="label">On-call stipend</span><span class="value"><span data-count="{{ stats.oncall_amount }}" data-decimals="2">{{ stats.oncall_amount|money }}</span><span class="unit">{{ settings.currency }}</span></span></div>{% endif %}
+  <div class="stat"><span class="label">Interventions</span><span class="value"><span data-count="{{ stats.interventions }}">{{ stats.interventions }}</span></span></div>
+  {% if not user.is_expert %}
+  <div class="stat"><span class="label">Overtime logged</span><span class="value"><span data-count="{{ stats.ot_hours }}" data-decimals="1">{{ stats.ot_hours }}</span><span class="unit">h</span></span></div>
+  {% endif %}
+</div>
+
+<section class="card">
+  <h2>My declarations</h2>
+  <div class="table-wrap">
+  <table class="table animate">
+    <thead><tr><th scope="col">Month</th><th scope="col">On-call</th>{% if not user.is_expert %}<th scope="col">Overtime</th>{% endif %}</tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td><strong>{{ month_label(r.year, r.month) }}</strong></td>
+        <td><a href="/oncall/{{ r.year }}/{{ r.month }}">{{ status_badge(r.oncall) }}</a></td>
+        {% if not user.is_expert %}<td><a href="/overtime/{{ r.year }}/{{ r.month }}">{{ status_badge(r.overtime) }}{% if r.overtime and r.overtime.seq > 1 %} <span class="tag">supplementary</span>{% endif %}</a></td>{% endif %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+<p class="help">
+  {% if user.is_expert %}
+  As an <strong>Expert</strong>, you declare interventions directly on your on-call sheet: an on-call day with an intervention is paid twice the daily on-call rate. You cannot file overtime.
+  {% else %}
+  Called during on-call duty? Tick "intervention" on the on-call sheet <em>and</em> log the hours as overtime. Forgot something in a past month? You can log overtime up to {{ settings.overtime_lookback_months }} months back; if that month is already approved, a supplementary sheet is created for your manager to validate.
+  {% endif %}
+</p>
+{% endblock %}

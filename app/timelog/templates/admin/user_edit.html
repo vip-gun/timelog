@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}{{ edit_user.username if edit_user else "New user" }}{% endblock %}
+{% block content %}
+{% include "admin/_nav.html" %}
+{% set u = edit_user %}
+<h1>{{ "Edit " ~ u.username if u else "New local user" }}</h1>
+<form method="post" action="/admin/users/save" class="card form-grid">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  {% if u %}<input type="hidden" name="user_id" value="{{ u.id }}">{% endif %}
+  <label>Username <input name="username" value="{{ u.username if u else '' }}" {% if u %}disabled{% else %}required{% endif %}></label>
+  <label>Source <input value="{{ u.auth_source if u else 'local' }}" disabled></label>
+  <label>First name <input name="first_name" value="{{ u.first_name if u else '' }}"></label>
+  <label>Last name <input name="last_name" value="{{ u.last_name if u else '' }}"></label>
+  <label>Display name <input name="display_name" value="{{ u.display_name if u else '' }}"></label>
+  <label>E-mail <input type="email" name="email" value="{{ u.email if u else '' }}"></label>
+  <label>Employee ID <input name="employee_id" value="{{ u.employee_id if u else '' }}"></label>
+  <label>Team <input name="team" value="{{ u.team if u else '' }}"></label>
+  <label>Line manager
+    <select name="manager_id">
+      <option value="">— none —</option>
+      {% for m in managers %}<option value="{{ m.id }}" {% if u and u.manager_id == m.id %}selected{% endif %}>{{ m.full_name }} ({{ m.username }})</option>{% endfor %}
+    </select>
+  </label>
+  <label>Grade
+    <select name="grade_id">
+      <option value="">default grade</option>
+      {% for g in grades %}<option value="{{ g.id }}" {% if u and u.grade_id == g.id %}selected{% endif %}>{{ g.code }} – {{ g.name }}</option>{% endfor %}
+    </select>
+  </label>
+  <label class="check"><input type="checkbox" name="manager_locked" value="1" {% if u and u.manager_locked %}checked{% endif %}> Lock manager (LDAP sync will not overwrite)</label>
+  <label class="check"><input type="checkbox" name="is_expert" value="1" {% if u and u.is_expert %}checked{% endif %}> Expert (no overtime; on-call interventions double the daily rate)</label>
+  <label class="check"><input type="checkbox" name="is_admin" value="1" {% if u and u.is_admin %}checked{% endif %}> Administrator</label>
+  <label class="check"><input type="checkbox" name="is_active" value="1" {% if not u or u.is_active %}checked{% endif %}> Active</label>
+  {% if not u or u.auth_source == "local" %}
+  <label class="span-2">{{ "New password (leave empty to keep)" if u else "Password" }} <input type="password" name="password" autocomplete="new-password" minlength="10" {% if not u %}required{% endif %}></label>
+  {% else %}
+  <p class="help span-all">LDAP account: names, e-mail, team and manager are refreshed at each login. Admin/Expert flags are overwritten at login when the corresponding LDAP group is configured.</p>
+  {% endif %}
+  <div class="actions span-all">
+    <a class="btn btn-ghost" href="/admin/users">Cancel</a>
+    <button class="btn btn-primary">Save</button>
+  </div>
+</form>
+{% endblock %}

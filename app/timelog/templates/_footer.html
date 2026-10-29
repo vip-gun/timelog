@@ -1,0 +1,8 @@
+<footer class="app-footer">
+  <span>{{ settings.app_name }}</span>
+  <span class="sep">·</span>
+  <span title="Application version">v{{ build.version }}</span>
+  <span class="sep">·</span>
+  <span title="Build timestamp">{% if build.dev %}dev build, started {% else %}built {% endif %}{{ build.display_time }}</span>
+  {% if build.commit %}<span class="sep">·</span><span title="Source commit">{{ build.commit }}</span>{% endif %}
+</footer>

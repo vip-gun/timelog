@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% from "_macros.html" import month_nav, sheet_actions, sheet_meta, status_badge, empty_state, submit_fields with context %}
+{% block title %}Overtime {{ month_label(year, month) }}{% endblock %}
+{% block content %}
+{% set extra = "" if own else "?user_id=" ~ target.id %}
+<div class="page-head">
+  <div>
+    <span class="eyebrow">Overtime</span>
+    <h1>{{ target.full_name if not own else "My overtime" }}</h1>
+  </div>
+  {{ month_nav("/overtime", year, month, extra) }}
+</div>
+
+{% if target.is_expert %}
+<div class="banner banner-info">Expert employees cannot file overtime. Interventions are declared on the <a href="/oncall/{{ year }}/{{ month }}{{ extra }}">on-call sheet</a> (daily rate doubled).</div>
+{% elif not own %}
+<p class="help"><a href="/oncall/{{ year }}/{{ month }}?user_id={{ target.id }}">View on-call sheet &rarr;</a></p>
+{% endif %}
+
+{% if can_add %}
+<details class="card details-toggle" {% if not blocks or month_in_window %}open{% endif %}>
+  <summary>Log overtime</summary>
+  <p class="help">
+    Any day from {{ window_first|date }} to today: the entry goes to the sheet of its month, so you can catch up on previous months.
+    Times in {{ step }}-minute steps. Night hours ({{ '%02d:%02d' % (settings.night_start // 60, settings.night_start % 60) }}–{{ '%02d:%02d' % (settings.night_end // 60, settings.night_end % 60) }}) are computed automatically and an entry past midnight is split per day.
+    Entries on your <strong>on-call days</strong> are detected automatically as on-call interventions; other weekend/holiday overtime must be pre-approved by your manager.
+  </p>
+  {% if latest_submitted %}<div class="banner banner-info">Your {{ month_label(year, month) }} sheet is awaiting validation: withdraw it below to add entries for this month.</div>{% endif %}
+  {% if next_is_supplement %}<div class="banner banner-info">{{ month_label(year, month) }} is already approved: new entries for this month go to a <strong>supplementary sheet</strong> (late claim) that you then submit.</div>{% endif %}
+  <form method="post" action="/overtime/entries" class="form-grid" id="ot-form" data-oncall-dates="{{ window_oncall|join(',') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <label>Date <input type="date" name="date" id="ot-date" required value="{{ default_date.isoformat() }}" min="{{ window_first.isoformat() }}" max="{{ window_last.isoformat() }}">
+      <span class="oncall-hint" id="ot-oncall-hint" hidden>● On-call day - recorded as an on-call intervention</span></label>
+    <label>From <select name="start" required><option value="">--:--</option>{% for m in range(0, 1440, step) %}<option value="{{ '%02d:%02d' % (m // 60, m % 60) }}">{{ '%02d:%02d' % (m // 60, m % 60) }}</option>{% endfor %}</select></label>
+    <label>To <select name="end" required><option value="">--:--</option>{% for m in range(step, 1440, step) %}<option value="{{ '%02d:%02d' % (m // 60, m % 60) }}">{{ '%02d:%02d' % (m // 60, m % 60) }}</option>{% endfor %}<option value="24:00">24:00</option></select></label>
+    {% if features.til %}
+    <div>
+      <span class="field-label">Compensation</span><br>
+      <div class="segmented">
+        <input type="radio" name="compensation" value="PAID" id="comp-paid" checked><label for="comp-paid">Paid</label>
+        <input type="radio" name="compensation" value="TIL" id="comp-til"><label for="comp-til">Time in lieu</label>
+      </div>
+    </div>
+    {% else %}<input type="hidden" name="compensation" value="PAID">{% endif %}
+    <label>Incident # <input name="incident_ref" maxlength="128" placeholder="INC…"></label>
+    <label class="span-2">Description of the work <input name="description" maxlength="1000" required></label>
+    <label class="check span-2"><input type="checkbox" name="preapproved" value="1"> Requested / pre-approved by my manager <span class="muted small">(required for weekend/holiday work outside on-call)</span></label>
+    <div class="actions span-all"><button class="btn btn-primary">Add entry</button></div>
+  </form>
+</details>
+{% endif %}
+
+{% for b in blocks %}
+{% set sheet = b.sheet %}
+<section class="card sheet-block status-{{ sheet.status }}">
+  <div class="sheet-head">
+    <h2>{{ "Supplementary sheet #" ~ sheet.seq if sheet.seq > 1 else month_label(year, month) }}</h2>
+    {{ status_badge(sheet) }}
+  </div>
+  <div class="meta">{{ sheet_meta(sheet) }}</div>
+
+  {% if b.entries %}
+  {% set til = features.til or b.totals.til_hours > 0 %}
+  <div class="table-wrap">
+  <table class="table animate">
+    <thead><tr><th scope="col">Date</th><th scope="col">Type</th><th scope="col">From</th><th scope="col">To</th><th scope="col" class="r">Hours</th><th scope="col" class="r">Night</th>{% if til %}<th scope="col">Comp.</th><th scope="col" class="r">TIL credit</th>{% endif %}<th scope="col">Context</th><th scope="col">Incident</th><th scope="col">Description</th>{% if b.editable %}<th scope="col"></th>{% endif %}</tr></thead>
+    <tbody>
+    {% for e in b.entries %}
+      <tr>
+        <td>{{ e.date|date }} <span class="muted small">{{ e.date.strftime("%a") }}</span></td>
+        <td><span class="daytype dt-badge-{{ e.day_type }}" title="{{ holidays.get(e.date, '') }}">{{ DAY_TYPE_LABELS[e.day_type] }}</span></td>
+        <td>{{ e.start_minute|hhmm }}</td>
+        <td>{{ e.end_minute|hhmm }}</td>
+        <td class="r"><strong>{{ e.hours|hours }}</strong></td>
+        <td class="r">{{ e.night_hours|hours }}</td>
+        {% if til %}
+        <td><span class="tag">{{ e.compensation }}</span></td>
+        <td class="r">{% if e.compensation == "TIL" %}{{ e.til_credit|hours }}{% endif %}</td>
+        {% endif %}
+        {% set on_call = (e.date in oncall_dates) if b.sheet.editable else e.on_call_intervention %}
+        <td class="small">{% if on_call %}<span class="tag tag-oncall" title="Detected from your on-call sheet">On-call</span>{% endif %}{% if e.preapproved %} <span class="tag">Pre-approved</span>{% endif %}
+          {% if b.sheet.editable and e.day_type != 'W' and not on_call and not e.preapproved %}<span class="warn" title="Weekend/holiday overtime that is neither on an on-call day nor pre-approved: it cannot be submitted">⚠</span>{% endif %}</td>
+        <td>{{ e.incident_ref }}</td>
+        <td class="desc">{{ e.description }}</td>
+        {% if b.editable %}
+        <td>
+          <form method="post" action="/overtime/entries/{{ e.id }}/delete" data-confirm="Delete this entry?">
+            <input type="hidden" name="csrf_token" value="{{ csrf }}">
+            <button class="btn btn-ghost btn-icon btn-sm" aria-label="Delete entry" title="Delete">✕</button>
+          </form>
+        </td>
+        {% endif %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% set t = b.totals %}
+  <div class="totals stagger">
+    <div><span>Weekday</span><strong>{{ t.hours_by_type['W']|hours }} h</strong></div>
+    <div><span>Saturday</span><strong>{{ t.hours_by_type['SAT']|hours }} h</strong></div>
+    <div><span>Sunday</span><strong>{{ t.hours_by_type['SUN']|hours }} h</strong></div>
+    <div><span>Holiday</span><strong>{{ t.hours_by_type['H']|hours }} h</strong></div>
+    <div><span>Night</span><strong>{{ t.total_night|hours }} h</strong></div>
+    <div><span>Total</span><strong>{{ t.total_hours|hours }} h</strong></div>
+    {% if til %}
+    <div><span>Paid</span><strong>{{ t.paid_hours|hours }} h</strong></div>
+    <div><span>TIL credit</span><strong>{{ t.til_credit|hours }} h</strong></div>
+    {% endif %}
+  </div>
+  {% else %}
+  {{ empty_state("No entry on this sheet yet.") }}
+  {% endif %}
+
+  {{ sheet_actions(sheet, b.can_withdraw, b.can_decide, b.can_reopen, csrf) }}
+</section>
+{% else %}
+<section class="card">{{ empty_state("No overtime logged for " ~ month_label(year, month) ~ ".") }}</section>
+{% endfor %}
+
+{% if own and pending %}
+<form method="post" action="/submit/{{ year }}/{{ month }}" class="card submit-panel">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <input type="hidden" name="back" value="overtime">
+  {{ submit_fields(pending, submit_comment, "ot", has_saved_signature) }}
+  <div class="actions"><button class="btn btn-primary" data-confirm="Submit your declaration (on-call and overtime) to your line manager for validation?">{{ "Sign & submit for validation" if features.signature else "Submit for validation" }}</button></div>
+</form>
+{% endif %}
+{% endblock %}

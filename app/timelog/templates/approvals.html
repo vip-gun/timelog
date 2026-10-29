@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_badge, empty_state %}
+{% block title %}Approvals{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><span class="eyebrow">Line management</span><h1>Approvals</h1></div>
+</div>
+<div class="stats stagger">
+  <div class="stat accent"><span class="label">Waiting for me</span><span class="value"><span data-count="{{ pending|length }}">{{ pending|length }}</span></span></div>
+  <div class="stat"><span class="label">Recently decided</span><span class="value"><span data-count="{{ recent|length }}">{{ recent|length }}</span></span></div>
+</div>
+<section class="card">
+  <h2>Waiting for my validation</h2>
+  {% if pending %}
+  <div class="table-wrap">
+  <table class="table animate">
+    <thead><tr><th scope="col">Employee</th><th scope="col">Team</th><th scope="col">Type</th><th scope="col">Work month</th><th scope="col">Content</th><th scope="col">Submitted</th><th scope="col"></th></tr></thead>
+    <tbody>
+    {% for s, summary, url in pending %}
+      <tr>
+        <td><strong>{{ s.user.full_name }}</strong></td>
+        <td>{{ s.user.team }}</td>
+        <td>{{ "On-call" if s.kind == "oncall" else "Overtime" }}</td>
+        <td>{{ month_label(s.year, s.month) }}{% if s.seq > 1 %} <span class="tag tag-late">late claim</span>{% endif %}</td>
+        <td>{{ summary }}</td>
+        <td class="small">{{ s.submitted_at|datetime }}</td>
+        <td class="r"><a class="btn btn-primary btn-sm" href="{{ url }}">Review &rarr;</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  {{ empty_state("All caught up - nothing to validate.") }}
+  {% endif %}
+</section>
+<section class="card">
+  <h2>Recently decided by me</h2>
+  {% if recent %}
+  <div class="table-wrap">
+  <table class="table animate">
+    <thead><tr><th scope="col">Employee</th><th scope="col">Type</th><th scope="col">Work month</th><th scope="col">Content</th><th scope="col">Status</th><th scope="col">Payroll</th><th scope="col">Decided</th></tr></thead>
+    <tbody>
+    {% for s, summary, url in recent %}
+      <tr>
+        <td><a href="{{ url }}">{{ s.user.full_name }}</a></td>
+        <td>{{ "On-call" if s.kind == "oncall" else "Overtime" }}</td>
+        <td>{{ month_label(s.year, s.month) }}</td>
+        <td>{{ summary }}</td>
+        <td>{{ status_badge(s) }}</td>
+        <td>{% if s.payroll_year %}{{ month_label(s.payroll_year, s.payroll_month) }}{% if s.is_late %} <span class="tag tag-late">late</span>{% endif %}{% endif %}</td>
+        <td class="small">{{ s.decided_at|datetime }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  {{ empty_state("No decision yet.") }}
+  {% endif %}
+</section>
+{% endblock %}

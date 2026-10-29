@@ -1,0 +1,68 @@
+# =====================================================================
+# Never commit secrets or personal data. See "Repository hygiene" in CLAUDE.md.
+# The pre-commit hook in .githooks/ double-checks staged files:
+#   git config core.hooksPath .githooks
+# =====================================================================
+
+# --- Secrets / configuration ------------------------------------------
+.env
+.env.*
+!.env.example
+*.secret
+secrets/
+
+# --- TLS material (Microsoft PKI certificates, keys, CSRs) ------------
+certs/*
+!certs/README.md
+*.key
+*.pem
+*.crt
+*.cer
+*.csr
+*.p12
+*.pfx
+*.jks
+
+# --- Personal / business data -----------------------------------------
+# Original Excel templates (real employee names) live in the top-level templates/ folder.
+# Leading "/" = only that folder; app/timelog/templates/ (HTML templates) must stay tracked.
+/templates/
+# Source spreadsheets contain real employee names; exports contain pay data.
+*.xlsx
+*.xlsm
+*.xls
+*.csv
+!app/tests/fixtures/**
+# Databases and dumps (users, declarations, encrypted LDAP password)
+*.db
+*.sqlite
+*.sqlite3
+*.sql
+*.sql.gz
+*.dump
+backups/
+
+# --- Code analysis (SonarQube lives in ../sonar; these are its by-products here) ---
+.scannerwork/
+app/coverage.xml
+
+# --- Build / runtime artefacts -----------------------------------------
+dist/
+app/timelog/BUILD_TIMESTAMP
+app/timelog/BUILD_COMMIT
+*.log
+
+# --- Python -------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# --- Editors / OS -------------------------------------------------------
+.DS_Store
+.idea/
+.vscode/
+*.swp

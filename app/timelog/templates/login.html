@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% from "_macros.html" import brand_mark %}
+{% block title %}Sign in{% endblock %}
+{% block body %}
+<div class="login-page">
+  <section class="login-hero" aria-hidden="true">
+    <span class="orb orb-1"></span><span class="orb orb-2"></span><span class="orb orb-3"></span>
+    <a class="brand" href="/">{{ brand_mark() }}{{ settings.app_name }}</a>
+    <div>
+      <h1>On-call &amp; overtime, simply declared.</h1>
+      <p>Log your on-call duty and overtime, have them validated by your line manager, and let Finance receive one clean monthly export.</p>
+    </div>
+    <span class="small muted"></span>
+  </section>
+  <section class="login-panel">
+    <form method="post" action="/login" class="login">
+      <span class="eyebrow">Welcome back</span>
+      <h2>Sign in</h2>
+      {% if error %}<div class="banner banner-error">{{ error }}</div>{% endif %}
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <input type="hidden" name="next" value="{{ next }}">
+      <label>Username{% if ldap_enabled %} <span class="muted">(Windows login)</span>{% endif %}
+        <input name="username" value="{{ username or '' }}" autocomplete="username" required>
+      </label>
+      <label>Password
+        <input name="password" type="password" autocomplete="current-password" required>
+      </label>
+      <button class="btn btn-primary wide">Sign in</button>
+    </form>
+    {% include "_footer.html" %}
+  </section>
+</div>
+{% endblock %}

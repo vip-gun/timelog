@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#4F4059">
+  {% set page_title %}{% block title %}Dashboard{% endblock %}{% endset %}
+  <title>{{ settings.app_name }} - {{ page_title|titlecase }}</title>
+  <link rel="preload" href="/static/fonts/ibm-plex-sans-latin-400.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/static/fonts/ibm-plex-sans-latin-500.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/static/fonts/space-grotesk-latin-wght.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/static/style.css?v={{ build.asset_tag }}">
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <script src="/static/app.js?v={{ build.asset_tag }}" defer></script>
+</head>
+<body>
+{% from "_macros.html" import brand_mark %}
+{% if flashes %}
+<div class="toasts" aria-live="polite">
+  {% for category, message in flashes %}
+  <div class="flash flash-{{ category }}" role="status"><span>{{ message }}</span><button class="x" type="button" aria-label="Dismiss">×</button></div>
+  {% endfor %}
+</div>
+{% endif %}
+{% block body %}
+{% if user %}
+{% set path = request.url.path %}
+<header class="topbar">
+  <a class="brand" href="/">{{ brand_mark() }}{{ settings.app_name }}</a>
+  <nav>
+    <a href="/" class="{{ 'active' if path == '/' }}">Dashboard</a>
+    <a href="/oncall" class="{{ 'active' if path.startswith('/oncall') }}">On-call</a>
+    {% if not user.is_expert %}<a href="/overtime" class="{{ 'active' if path.startswith('/overtime') }}">Overtime</a>{% endif %}
+    {% if is_manager or user.is_admin %}
+      <a href="/approvals" class="{{ 'active' if path.startswith('/approvals') }}">Approvals</a>
+      <a href="/team" class="{{ 'active' if path.startswith('/team') }}">Team &amp; Export</a>
+    {% endif %}
+    {% if user.is_admin %}<a href="/admin/users" class="{{ 'active' if path.startswith('/admin') }}">Admin</a>{% endif %}
+  </nav>
+  <div class="who">
+    <span class="avatar" title="{{ user.full_name }}">{{ (user.first_name[:1] ~ user.last_name[:1]) | upper or user.username[:2] | upper }}</span>
+    <span class="name">{{ user.full_name }}{% if user.is_expert %} <span class="tag">Expert</span>{% endif %}{% if user.is_admin %} <span class="tag">Admin</span>{% endif %}</span>
+    <form method="post" action="/logout" class="inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <button class="link">Sign Out</button>
+    </form>
+  </div>
+</header>
+{% endif %}
+<main class="container page">
+  {% block content %}{% endblock %}
+</main>
+{% include "_footer.html" %}
+{% endblock %}
+</body>
+</html>

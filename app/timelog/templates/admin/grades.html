@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Grades{% endblock %}
+{% block content %}
+{% include "admin/_nav.html" %}
+<h1>Grades &amp; on-call daily rates ({{ settings.currency }})</h1>
+<p class="help">Rates are snapshotted when a sheet is saved/submitted: changing them never alters submitted or approved sheets.</p>
+<div class="table-wrap">
+<table class="table animate">
+  <thead><tr><th scope="col">Code</th><th scope="col">Name</th><th scope="col">Weekday</th><th scope="col">Saturday</th><th scope="col">Sunday</th><th scope="col">Holiday</th><th scope="col">Default</th><th scope="col"></th></tr></thead>
+  <tbody>
+  {% for g in grades %}
+    <tr>
+      <td colspan="8">
+        <form method="post" action="/admin/grades" class="row-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <input type="hidden" name="grade_id" value="{{ g.id }}">
+          {% set p = "g" ~ g.id ~ "-" %}
+          <label class="sr-only" for="{{ p }}code">Code</label><input id="{{ p }}code" name="code" value="{{ g.code }}" class="w-sm" required>
+          <label class="sr-only" for="{{ p }}name">Name</label><input id="{{ p }}name" name="name" value="{{ g.name }}">
+          <label class="sr-only" for="{{ p }}w">Weekday rate</label><input id="{{ p }}w" name="rate_weekday" value="{{ g.rate_weekday }}" class="w-sm" inputmode="decimal">
+          <label class="sr-only" for="{{ p }}sat">Saturday rate</label><input id="{{ p }}sat" name="rate_saturday" value="{{ g.rate_saturday }}" class="w-sm" inputmode="decimal">
+          <label class="sr-only" for="{{ p }}sun">Sunday rate</label><input id="{{ p }}sun" name="rate_sunday" value="{{ g.rate_sunday }}" class="w-sm" inputmode="decimal">
+          <label class="sr-only" for="{{ p }}h">Holiday rate</label><input id="{{ p }}h" name="rate_holiday" value="{{ g.rate_holiday }}" class="w-sm" inputmode="decimal">
+          <label class="check"><input type="checkbox" name="is_default" value="1" {% if g.is_default %}checked{% endif %}> default</label>
+          <button class="btn btn-ghost btn-sm">Save</button>
+        </form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+<section class="card">
+  <h2>New grade</h2>
+  <form method="post" action="/admin/grades" class="row-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <label class="sr-only" for="new-code">Code</label><input id="new-code" name="code" placeholder="Code" class="w-sm" required>
+    <label class="sr-only" for="new-name">Name</label><input id="new-name" name="name" placeholder="Name">
+    <label class="sr-only" for="new-w">Weekday rate</label><input id="new-w" name="rate_weekday" placeholder="Weekday" class="w-sm" inputmode="decimal" required>
+    <label class="sr-only" for="new-sat">Saturday rate</label><input id="new-sat" name="rate_saturday" placeholder="Saturday" class="w-sm" inputmode="decimal" required>
+    <label class="sr-only" for="new-sun">Sunday rate</label><input id="new-sun" name="rate_sunday" placeholder="Sunday" class="w-sm" inputmode="decimal" required>
+    <label class="sr-only" for="new-h">Holiday rate</label><input id="new-h" name="rate_holiday" placeholder="Holiday" class="w-sm" inputmode="decimal" required>
+    <label class="check"><input type="checkbox" name="is_default" value="1"> default</label>
+    <button class="btn btn-primary btn-sm">Add</button>
+  </form>
+</section>
+{% endblock %}

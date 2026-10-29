@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Legal holidays{% endblock %}
+{% block content %}
+{% include "admin/_nav.html" %}
+<h1>Legal holidays</h1>
+<p class="help">A holiday takes precedence over Saturday/Sunday. Used for both on-call rates and overtime premiums.</p>
+<section class="card">
+  <h2>Import from an iCalendar file (.ics)</h2>
+  <p class="help">Upload a public-holiday calendar, e.g. the Luxembourg holidays exported from Outlook/Google Calendar or downloaded from an official source. All-day and multi-day events are imported, and each event's title becomes the holiday name. Recurring events are skipped.</p>
+  <form method="post" action="/admin/holidays/import" enctype="multipart/form-data" class="form-grid">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <label class="span-2">Calendar file <input type="file" name="file" accept=".ics,text/calendar" required></label>
+    <div class="span-2">
+      <span class="field-label">Mode</span>
+      <div class="radio-row">
+        <label><input type="radio" name="mode" value="merge" checked> Add / update dates</label>
+        <label><input type="radio" name="mode" value="replace"> Replace the years contained in the file</label>
+      </div>
+    </div>
+    <div class="actions span-all"><button class="btn btn-primary">Import holidays</button></div>
+  </form>
+</section>
+<section class="card">
+  <h2>Add a single holiday</h2>
+  <form method="post" action="/admin/holidays" class="row-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <label class="sr-only" for="holiday-date">Date</label><input id="holiday-date" type="date" name="date" required>
+    <label class="sr-only" for="holiday-name">Name</label><input id="holiday-name" name="name" placeholder="Name" required>
+    <button class="btn btn-primary btn-sm">Add holiday</button>
+  </form>
+</section>
+<div class="table-wrap">
+<table class="table animate">
+  <thead><tr><th scope="col">Date</th><th scope="col">Day</th><th scope="col">Name</th><th scope="col"></th></tr></thead>
+  <tbody>
+  {% for h in holidays %}
+    <tr>
+      <td>{{ h.date|date }}</td><td>{{ h.date.strftime("%a") }}</td><td>{{ h.name }}</td>
+      <td>
+        <form method="post" action="/admin/holidays/{{ h.id }}/delete" data-confirm="Delete {{ h.name }}?">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <button class="btn btn-ghost btn-sm">Delete</button>
+        </form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

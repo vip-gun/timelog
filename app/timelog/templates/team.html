@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_badge, empty_state %}
+{% block title %}Team {{ month_label(year, month) }}{% endblock %}
+{% block content %}
+{% set p = shift_month(year, month, -1) %}{% set n = shift_month(year, month, 1) %}
+{% set q = "&team=" ~ (team|urlencode) if team else "" %}
+<div class="page-head">
+  <div><span class="eyebrow">Team overview &amp; payroll export</span><h1>My team</h1></div>
+  <div class="month-nav">
+    <a class="btn btn-ghost btn-icon" href="/team?year={{ p[0] }}&month={{ p[1] }}{{ q }}" aria-label="Previous month">&larr;</a>
+    <span class="current">{{ month_label(year, month) }}</span>
+    <a class="btn btn-ghost btn-icon" href="/team?year={{ n[0] }}&month={{ n[1] }}{{ q }}" aria-label="Next month">&rarr;</a>
+  </div>
+</div>
+
+<div class="stats stagger">
+  <div class="stat accent"><span class="label">Approved on-call · payroll {{ MONTH_NAMES[month][:3] }}</span><span class="value"><span data-count="{{ totals.oncall }}" data-decimals="2">{{ totals.oncall|money }}</span><span class="unit">{{ settings.currency }}</span></span></div>
+  <div class="stat"><span class="label">Approved overtime · payroll {{ MONTH_NAMES[month][:3] }}</span><span class="value"><span data-count="{{ totals.hours }}" data-decimals="2">{{ totals.hours|hours }}</span><span class="unit">h</span></span></div>
+  <div class="stat"><span class="label">Late claims in this payroll</span><span class="value"><span data-count="{{ late|length }}">{{ late|length }}</span></span></div>
+  <div class="stat"><span class="label">Late claims awaiting validation</span><span class="value"><span data-count="{{ pending_late|length }}">{{ pending_late|length }}</span></span></div>
+</div>
+
+<section class="card row-between">
+  <form method="get" action="/team" class="inline-form">
+    <input type="hidden" name="year" value="{{ year }}"><input type="hidden" name="month" value="{{ month }}">
+    <label>Team
+      <select name="team" data-autosubmit>
+        <option value="">All teams</option>
+        {% for t in teams %}<option value="{{ t }}" {% if t == team %}selected{% endif %}>{{ t }}</option>{% endfor %}
+      </select>
+    </label>
+  </form>
+  <a class="btn btn-primary" href="/team/export?year={{ year }}&month={{ month }}{{ q }}">⤓ Export payroll {{ month_label(year, month) }} (.xlsx)</a>
+</section>
+<p class="help">The export contains every <strong>approved</strong> sheet paid in payroll period {{ month_label(year, month) }}: work done this month (approved by the {{ settings.payroll_cutoff_day }}th of next month) plus late claims for earlier months approved after their cut-off.</p>
+
+<h2>Work done in {{ month_label(year, month) }}</h2>
+{% set til = features.til or (rows|selectattr("ot")|map(attribute="ot.til_hours")|select|list|length > 0) %}
+<div class="table-wrap">
+<table class="table animate">
+  <thead>
+    <tr><th scope="col">Employee</th><th scope="col">Team</th><th scope="col">On-call</th><th scope="col" class="r">Days</th><th scope="col" class="r">Amount</th><th scope="col">Overtime</th><th scope="col" class="r">Hours</th>{% if til %}<th scope="col" class="r">Paid</th><th scope="col" class="r">TIL credit</th>{% endif %}</tr>
+  </thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td><strong>{{ r.user.full_name }}</strong>{% if r.user.is_expert %} <span class="tag">Expert</span>{% endif %}{% if not r.direct %} <span class="muted small">(indirect)</span>{% endif %}</td>
+      <td>{{ r.user.team }}</td>
+      <td><a href="/oncall/{{ year }}/{{ month }}?user_id={{ r.user.id }}">{{ status_badge(r.oncall) }}</a></td>
+      <td class="r">{{ r.oc_days or "" }}</td>
+      <td class="r">{% if r.oncall %}{{ r.oc_amount|money }}{% endif %}</td>
+      {% if r.user.is_expert %}
+      <td class="muted">n/a</td><td></td>{% if til %}<td></td><td></td>{% endif %}
+      {% else %}
+      <td><a href="/overtime/{{ year }}/{{ month }}?user_id={{ r.user.id }}">{% for s in r.overtime %}{{ status_badge(s) }} {% else %}{{ status_badge(None) }}{% endfor %}</a></td>
+      <td class="r">{% if r.ot %}{{ r.ot.total_hours|hours }}{% endif %}</td>
+      {% if til %}
+      <td class="r">{% if r.ot %}{{ r.ot.paid_hours|hours }}{% endif %}</td>
+      <td class="r">{% if r.ot %}{{ r.ot.til_credit|hours }}{% endif %}</td>
+      {% endif %}
+      {% endif %}
+    </tr>
+  {% else %}
+    <tr><td colspan="{{ 9 if til else 7 }}">{{ empty_state("No team member.") }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+{% if late or pending_late %}
+<h2>Late claims</h2>
+<div class="table-wrap">
+<table class="table animate">
+  <thead><tr><th scope="col">Employee</th><th scope="col">Type</th><th scope="col">Work month</th><th scope="col">Status</th><th scope="col">Payroll period</th><th scope="col"></th></tr></thead>
+  <tbody>
+  {% for l in late + pending_late %}
+    <tr>
+      <td><strong>{{ l.user.full_name }}</strong></td>
+      <td>{{ "On-call" if l.sheet.kind == "oncall" else "Overtime" }}{% if l.sheet.seq > 1 %} <span class="tag">suppl. #{{ l.sheet.seq }}</span>{% endif %}</td>
+      <td>{{ month_label(l.sheet.year, l.sheet.month) }}</td>
+      <td>{{ status_badge(l.sheet) }}</td>
+      <td>{% if l.sheet.payroll_year %}{{ month_label(l.sheet.payroll_year, l.sheet.payroll_month) }}{% else %}<span class="muted">once approved</span>{% endif %}</td>
+      <td class="r"><a class="btn btn-ghost btn-sm" href="{{ l.url }}">Open</a></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,44 @@
+#!/usr/bin/env sh
+# Refuse commits that contain secrets or personal data (offline, no dependency).
+# Enable once per clone:  git config core.hooksPath .githooks
+# Bypass only after review: git commit --no-verify
+set -eu
+
+fail=0
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+[ -z "$staged" ] && exit 0
+
+# 1. Forbidden file types / locations
+for f in $staged; do
+  case "$f" in
+    .env.example|certs/README.md|app/tests/fixtures/*) ;;
+    .env|.env.*|*.key|*.pem|*.crt|*.cer|*.csr|*.p12|*.pfx|*.jks|certs/*|\
+    templates/*|*.xlsx|*.xlsm|*.xls|*.csv|*.db|*.sqlite|*.sqlite3|*.sql|*.sql.gz|*.dump|backups/*)
+      echo "pre-commit: refusing sensitive file: $f" >&2; fail=1 ;;
+  esac
+done
+
+# 2. Content patterns in staged text (private keys, credentials assigned to literals, cloud keys)
+patterns='-----BEGIN ([A-Z]+ )?PRIVATE KEY-----|(LDAP_BIND_PASSWORD|POSTGRES_PASSWORD|SMTP_PASSWORD|BOOTSTRAP_ADMIN_PASSWORD|SECRET_KEY)=[^[:space:]<$]{6,}|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{36}'
+for f in $staged; do
+  [ -f "$f" ] || continue
+  case "$f" in .env.example|.githooks/*) continue ;; esac
+  if git show ":$f" | LC_ALL=C grep -I -n -E -e "$patterns" >/dev/null 2>&1; then
+    echo "pre-commit: possible secret in $f:" >&2
+    git show ":$f" | LC_ALL=C grep -I -n -E -e "$patterns" | sed 's/^/    /' >&2
+    fail=1
+  fi
+done
+
+# 3. .env.example must only contain placeholders for secrets
+if echo "$staged" | grep -qx ".env.example"; then
+  if git show ":.env.example" | grep -E '^(SECRET_KEY|POSTGRES_PASSWORD|BOOTSTRAP_ADMIN_PASSWORD|LDAP_BIND_PASSWORD|SMTP_PASSWORD)=' \
+       | grep -v -E '=(change-me[^[:space:]]*)?$' >/dev/null; then
+    echo "pre-commit: .env.example must keep secrets empty or 'change-me…' placeholders" >&2; fail=1
+  fi
+fi
+
+if [ "$fail" -ne 0 ]; then
+  echo "pre-commit: commit aborted (see CLAUDE.md > Repository hygiene)." >&2
+  exit 1
+fi

@@ -1,0 +1,120 @@
+{% macro brand_mark() -%}
+<span class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg></span>
+{%- endmacro %}
+
+{% macro status_badge(sheet) -%}
+  {% if sheet %}<span class="badge badge-{{ sheet.status }}">{{ sheet.status }}</span>{% else %}<span class="badge badge-none">not started</span>{% endif %}
+{%- endmacro %}
+
+{% macro month_nav(base, year, month, extra="") -%}
+  {% set p = shift_month(year, month, -1) %}{% set n = shift_month(year, month, 1) %}
+  <div class="month-nav">
+    <a class="btn btn-ghost btn-icon" href="{{ base }}/{{ p[0] }}/{{ p[1] }}{{ extra }}" aria-label="Previous month" title="{{ month_label(p[0], p[1]) }}">&larr;</a>
+    <span class="current">{{ month_label(year, month) }}</span>
+    <a class="btn btn-ghost btn-icon" href="{{ base }}/{{ n[0] }}/{{ n[1] }}{{ extra }}" aria-label="Next month" title="{{ month_label(n[0], n[1]) }}">&rarr;</a>
+  </div>
+{%- endmacro %}
+
+{% macro empty_state(text) -%}
+<div class="empty">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>
+  <div>{{ text }}</div>
+</div>
+{%- endmacro %}
+
+{% macro sheet_meta(sheet) -%}
+  {% if sheet.submitted_at %}<span>Submitted {{ sheet.submitted_at|datetime }}</span>{% endif %}
+  {% if sheet.decided_at %}<span>· {{ sheet.status|capitalize }} by {{ sheet.decided_by.full_name if sheet.decided_by else "?" }} on {{ sheet.decided_at|datetime }}</span>{% endif %}
+  {% if sheet.payroll_year %}<span>· Paid with payroll {{ month_label(sheet.payroll_year, sheet.payroll_month) }}</span>{% if sheet.is_late %} <span class="tag tag-late">Late claim</span>{% endif %}{% endif %}
+{%- endmacro %}
+
+{# Signature pad shown in submission forms when signatures are required (JS: static/app.js).
+   The signature can be drawn, uploaded as a picture, or reused from the user's saved picture. #}
+{% macro signature_pad(prefix, has_saved=False) -%}
+<div class="signature-block" data-signature data-saved-url="{{ '/signature/saved.png' if has_saved else '' }}">
+  <span class="field-label">Signature</span>
+  <div class="signature-frame">
+    <canvas class="signature-pad js-signature-pad" width="600" height="170" aria-label="Signature pad: draw your signature"></canvas>
+    <span class="signature-placeholder">Sign here, or upload a picture of your signature</span>
+  </div>
+  <input type="hidden" name="signature" class="js-signature-data">
+  <div class="signature-tools">
+    <button type="button" class="btn btn-ghost btn-sm js-signature-clear">Clear</button>
+    <label class="btn btn-ghost btn-sm file-btn" for="{{ prefix }}-sig-file">Upload picture</label>
+    <input type="file" id="{{ prefix }}-sig-file" class="sr-only js-signature-file" accept="image/png,image/jpeg,image/webp,image/gif">
+    {% if has_saved %}
+    <button type="button" class="btn btn-ghost btn-sm js-signature-saved">Use my saved signature</button>
+    <button type="submit" class="btn btn-ghost btn-sm" formaction="/signature/forget" formmethod="post" formnovalidate name="action" value="forget" data-confirm="Delete your saved signature?">Forget it</button>
+    {% endif %}
+    <span class="muted small">Draw with the mouse, a finger or a pen, or upload a PNG / JPEG picture.</span>
+  </div>
+  <label class="check" for="{{ prefix }}-sig-save"><input type="checkbox" id="{{ prefix }}-sig-save" name="save_signature" value="1"> Remember this signature for my next submissions</label>
+  <label class="check" for="{{ prefix }}-sig-confirm"><input type="checkbox" id="{{ prefix }}-sig-confirm" name="signature_confirm" value="1" class="js-signature-confirm"> {{ SIGNATURE_STATEMENT }}</label>
+  <span class="signature-error" role="alert" hidden></span>
+</div>
+{%- endmacro %}
+
+{# Single submission panel: what is sent, comment, signature. `oncall_in_form` is set on the on-call page (its days are saved by the same button). #}
+{% macro submit_fields(pending, comment, prefix, has_saved, oncall_in_form=False) -%}
+<h2>Submit your declaration</h2>
+<p class="help">One submission sends your drafts of this month to your line manager together:</p>
+<ul class="submit-summary">
+  {% if oncall_in_form %}<li><span class="tag tag-oncall">On-call</span> the days ticked above</li>{% endif %}
+  {% for p in pending if not (oncall_in_form and p.kind == 'oncall') %}<li><span class="tag{{ ' tag-oncall' if p.kind == 'oncall' }}">{{ p.label }}</span> {{ p.detail }}</li>{% endfor %}
+</ul>
+<label>Comment for your manager <span class="muted">(optional)</span>
+  <textarea name="employee_comment" rows="2" maxlength="2000">{{ comment }}</textarea>
+</label>
+{% if features.signature %}{{ signature_pad(prefix, has_saved) }}{% endif %}
+{%- endmacro %}
+
+{# Signature of the current submission, with the content integrity check #}
+{% macro signature_view(sheet) -%}
+{% set sig = sheet.signature %}
+{% if sig %}
+<div class="signature-view">
+  <img src="/signatures/{{ sig.id }}.png" alt="Signature of {{ sig.user.full_name }}" class="signature-img">
+  <div>
+    <strong>Signed by {{ sig.user.full_name }}</strong> <span class="muted small">on {{ sig.signed_at|datetime }}</span><br>
+    <span class="muted small">"{{ sig.statement }}"</span><br>
+    {% if verify_signature(sheet) %}<span class="tag tag-ok" title="SHA-256 {{ sig.content_digest }}">✓ content unchanged since signature</span>
+    {% else %}<span class="tag tag-late" title="SHA-256 at signature {{ sig.content_digest }}">⚠ content changed after signature</span>{% endif %}
+  </div>
+</div>
+{% endif %}
+{%- endmacro %}
+
+{# Status, comments, and workflow actions of one sheet #}
+{% macro sheet_actions(sheet, can_withdraw, can_decide, can_reopen, csrf) -%}
+  {{ signature_view(sheet) }}
+  {% if sheet.employee_comment %}<p><strong>Employee comment:</strong> {{ sheet.employee_comment }}</p>{% endif %}
+  {% if sheet.decision_comment %}<p class="{{ 'error-text' if sheet.status == 'rejected' else '' }}"><strong>Manager comment:</strong> {{ sheet.decision_comment }}</p>{% endif %}
+  {% if can_withdraw %}
+  <form method="post" action="/sheets/{{ sheet.id }}/withdraw" class="actions" data-confirm="Withdraw this submission? It becomes a draft again.">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <button class="btn btn-ghost btn-sm">Withdraw submission</button>
+  </form>
+  {% endif %}
+  {% if can_decide %}
+  <form method="post" action="/sheets/{{ sheet.id }}/decide" class="decision">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <label>Comment <span class="muted">(required to reject)</span>
+      <textarea name="comment" rows="2" maxlength="2000"></textarea>
+    </label>
+    <div class="actions">
+      <button class="btn btn-danger" name="action" value="reject">Reject</button>
+      <button class="btn btn-success" name="action" value="approve">Approve</button>
+    </div>
+  </form>
+  {% endif %}
+  {% if can_reopen %}
+  <details class="details-toggle decision">
+    <summary>Reopen (administrator)</summary>
+    <form method="post" action="/sheets/{{ sheet.id }}/reopen" data-confirm="Reopen this approved sheet? It will need to be submitted and approved again.">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <label>Reason <input name="reason" required maxlength="500"></label>
+      <div class="actions"><button class="btn btn-ghost">Reopen as draft</button></div>
+    </form>
+  </details>
+  {% endif %}
+{%- endmacro %}

@@ -1,0 +1,386 @@
+import datetime as dt
+from decimal import Decimal, InvalidOperation
+from typing import Optional
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from sqlalchemy import extract, or_, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from ..access import subordinate_ids
+from ..app_settings import (
+    LDAP_FIELDS, LDAP_PREFIX, SECRET_FIELDS, clear_ldap_settings, effective_settings, get_flag, ldap_overrides,
+    save_ldap_settings, secret_status, set_setting,
+)
+from ..config import get_settings
+from ..ldap_auth import diagnose
+from ..db import get_db
+from ..ics_import import MAX_BYTES, IcsError, parse_ics
+from ..models import DAY_TYPES, SETTING_SHOW_AMOUNTS, SETTING_SIGNATURE_REQUIRED, SETTING_TIL_ENABLED, AppSetting, AuditLog, Grade, Holiday, OvertimeRule, User
+from ..security import admin_user, check_password_policy, flash, hash_password, verify_csrf
+from ..web import redirect, render
+from ..workflow import audit
+
+router = APIRouter(prefix="/admin", dependencies=[Depends(admin_user)])
+
+
+def _dec(value: str, field: str) -> Decimal:
+    try:
+        d = Decimal(value.replace(",", "."))
+    except (InvalidOperation, AttributeError):
+        raise ValueError(f"{field}: invalid number")
+    if d < 0:
+        raise ValueError(f"{field}: must be positive")
+    return d
+
+
+# ------------------------------------------------------------------ users
+@router.get("/users")
+def users(request: Request, q: str = "", db: Session = Depends(get_db)):
+    stmt = select(User)
+    if q:
+        like = f"%{q.lower()}%"
+        stmt = stmt.where(or_(User.username.ilike(like), User.first_name.ilike(like), User.last_name.ilike(like),
+                              User.display_name.ilike(like), User.team.ilike(like)))
+    rows = sorted(db.scalars(stmt), key=lambda u: u.sort_key)
+    return render(request, "admin/users.html", {"users": rows, "q": q})
+
+
+def _user_form_ctx(db: Session, user: Optional[User]) -> dict:
+    candidates = sorted(db.scalars(select(User).where(User.is_active.is_(True))), key=lambda u: u.full_name.lower())
+    if user is not None and user.id:
+        excluded = subordinate_ids(db, user) | {user.id}
+        candidates = [c for c in candidates if c.id not in excluded]
+    return {"edit_user": user, "managers": candidates, "grades": list(db.scalars(select(Grade).order_by(Grade.code)))}
+
+
+@router.get("/users/new")
+def new_user_form(request: Request, db: Session = Depends(get_db)):
+    return render(request, "admin/user_edit.html", _user_form_ctx(db, None))
+
+
+@router.get("/users/{user_id}")
+def edit_user_form(request: Request, user_id: int, db: Session = Depends(get_db)):
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(404, "Not found")
+    return render(request, "admin/user_edit.html", _user_form_ctx(db, user))
+
+
+@router.post("/users/save", dependencies=[Depends(verify_csrf)])
+def save_user(
+    request: Request,
+    user_id: Optional[int] = Form(None), username: str = Form(""),
+    first_name: str = Form(""), last_name: str = Form(""), display_name: str = Form(""),
+    email: str = Form(""), employee_id: str = Form(""), team: str = Form(""),
+    manager_id: Optional[str] = Form(None), manager_locked: Optional[str] = Form(None),
+    grade_id: Optional[str] = Form(None), is_expert: Optional[str] = Form(None),
+    is_admin: Optional[str] = Form(None), is_active: Optional[str] = Form(None),
+    password: str = Form(""),
+    me: User = Depends(admin_user), db: Session = Depends(get_db),
+):
+    creating = user_id is None
+    if creating:
+        username = username.strip().lower()
+        if not username:
+            flash(request, "Username is required.", "error")
+            return redirect("/admin/users/new")
+        user = User(username=username, auth_source="local")
+        db.add(user)
+    else:
+        user = db.get(User, user_id)
+        if user is None:
+            raise HTTPException(404, "Not found")
+    back = "/admin/users/new" if creating else f"/admin/users/{user_id}"
+    try:
+        user.first_name, user.last_name = first_name.strip(), last_name.strip()
+        user.display_name, user.email = display_name.strip(), email.strip()
+        user.employee_id, user.team = employee_id.strip(), team.strip()
+        user.grade_id = int(grade_id) if grade_id else None
+        user.is_expert = bool(is_expert)
+        user.manager_locked = bool(manager_locked)
+        if user.id == me.id and (not is_admin or not is_active):
+            raise ValueError("You cannot remove your own admin rights or deactivate yourself.")
+        user.is_admin, user.is_active = bool(is_admin), bool(is_active)
+        new_manager = int(manager_id) if manager_id else None
+        if new_manager is not None and user.id is not None:
+            if new_manager == user.id or new_manager in subordinate_ids(db, user):
+                raise ValueError("This manager would create a cycle in the hierarchy.")
+        user.manager_id = new_manager
+        if password:
+            if user.auth_source != "local":
+                raise ValueError("Passwords can only be set for local accounts.")
+            check_password_policy(password)
+            user.password_hash = hash_password(password)
+        elif creating:
+            raise ValueError("A password is required for a new local user.")
+        db.flush()
+        audit(db, me, "user_create" if creating else "user_update", "user", user.id,
+              username=user.username, admin=user.is_admin, expert=user.is_expert, active=user.is_active,
+              manager_id=user.manager_id, password_changed=bool(password))
+        db.commit()
+    except ValueError as exc:
+        db.rollback()
+        flash(request, str(exc), "error")
+        return redirect(back)
+    except IntegrityError:
+        db.rollback()
+        flash(request, "Username already exists.", "error")
+        return redirect(back)
+    flash(request, f"User {user.username} saved.", "success")
+    return redirect("/admin/users")
+
+
+# ------------------------------------------------------------------ grades
+@router.get("/grades")
+def grades(request: Request, db: Session = Depends(get_db)):
+    return render(request, "admin/grades.html", {"grades": list(db.scalars(select(Grade).order_by(Grade.code)))})
+
+
+@router.post("/grades", dependencies=[Depends(verify_csrf)])
+def save_grade(request: Request, grade_id: Optional[int] = Form(None), code: str = Form(""), name: str = Form(""),
+               rate_weekday: str = Form("0"), rate_saturday: str = Form("0"), rate_sunday: str = Form("0"),
+               rate_holiday: str = Form("0"), is_default: Optional[str] = Form(None),
+               me: User = Depends(admin_user), db: Session = Depends(get_db)):
+    try:
+        grade = db.get(Grade, grade_id) if grade_id else Grade()
+        if grade is None:
+            raise HTTPException(404, "Not found")
+        if not code.strip():
+            raise ValueError("Code is required.")
+        grade.code, grade.name = code.strip().upper(), name.strip() or code.strip()
+        grade.rate_weekday = _dec(rate_weekday, "Weekday rate")
+        grade.rate_saturday = _dec(rate_saturday, "Saturday rate")
+        grade.rate_sunday = _dec(rate_sunday, "Sunday rate")
+        grade.rate_holiday = _dec(rate_holiday, "Holiday rate")
+        if is_default:
+            for g in db.scalars(select(Grade)):
+                g.is_default = False
+        grade.is_default = bool(is_default) or bool(grade.is_default)
+        if grade.id is None:
+            db.add(grade)
+        db.flush()
+        audit(db, me, "grade_save", "grade", grade.id, code=grade.code, rates=[
+            str(grade.rate_weekday), str(grade.rate_saturday), str(grade.rate_sunday), str(grade.rate_holiday)])
+        db.commit()
+        flash(request, f"Grade {grade.code} saved. Rates apply to sheets saved or submitted from now on.", "success")
+    except ValueError as exc:
+        db.rollback()
+        flash(request, str(exc), "error")
+    except IntegrityError:
+        db.rollback()
+        flash(request, "Grade code already exists.", "error")
+    return redirect("/admin/grades")
+
+
+# ------------------------------------------------------------------ holidays
+@router.get("/holidays")
+def holidays(request: Request, db: Session = Depends(get_db)):
+    return render(request, "admin/holidays.html", {"holidays": list(db.scalars(select(Holiday).order_by(Holiday.date)))})
+
+
+@router.post("/holidays", dependencies=[Depends(verify_csrf)])
+def add_holiday(request: Request, date: str = Form(...), name: str = Form(""),
+                me: User = Depends(admin_user), db: Session = Depends(get_db)):
+    try:
+        h = Holiday(date=dt.date.fromisoformat(date), name=name.strip() or "Holiday")
+        db.add(h)
+        db.flush()
+        audit(db, me, "holiday_add", "holiday", h.id, date=date, name=h.name)
+        db.commit()
+        flash(request, "Holiday added.", "success")
+    except ValueError:
+        db.rollback()
+        flash(request, "Invalid date.", "error")
+    except IntegrityError:
+        db.rollback()
+        flash(request, "This date is already a holiday.", "error")
+    return redirect("/admin/holidays")
+
+
+@router.post("/holidays/import", dependencies=[Depends(verify_csrf)])
+async def import_holidays(request: Request, file: UploadFile = File(...), mode: str = Form("merge"),
+                          me: User = Depends(admin_user), db: Session = Depends(get_db)):
+    """Import public holidays from an .ics file. merge = add/rename by date; replace = the years
+    contained in the file are replaced entirely (dates not in the file are removed for those years)."""
+    try:
+        result = parse_ics(await file.read(MAX_BYTES + 1))
+    except IcsError as exc:
+        flash(request, f"Import failed: {exc}", "error")
+        return redirect("/admin/holidays")
+    removed = 0
+    if mode == "replace" and result.years:
+        for h in db.scalars(select(Holiday).where(extract("year", Holiday.date).in_(result.years))):
+            if h.date not in result.holidays:
+                db.delete(h)
+                removed += 1
+    existing = {h.date: h for h in db.scalars(select(Holiday).where(Holiday.date.in_(list(result.holidays))))}
+    added = renamed = 0
+    for date, name in sorted(result.holidays.items()):
+        h = existing.get(date)
+        if h is None:
+            db.add(Holiday(date=date, name=name))
+            added += 1
+        elif h.name != name:
+            h.name = name
+            renamed += 1
+    audit(db, me, "holiday_import", "holiday", None, file=file.filename, mode=mode, years=result.years,
+          added=added, renamed=renamed, removed=removed, skipped_recurring=result.skipped_recurring)
+    db.commit()
+    msg = (f"Imported {len(result.holidays)} holiday date(s) for {', '.join(map(str, result.years)) or '-'}: "
+           f"{added} added, {renamed} renamed, {removed} removed.")
+    if result.skipped_recurring or result.skipped_other:
+        msg += (f" Skipped {result.skipped_recurring} recurring and {result.skipped_other} other event(s) "
+                "(cancelled, too long or invalid).")
+    flash(request, msg + " Draft sheets pick up the new holidays at their next save; submitted sheets keep "
+                         "their snapshot.", "success")
+    return redirect("/admin/holidays")
+
+
+@router.post("/holidays/{holiday_id}/delete", dependencies=[Depends(verify_csrf)])
+def delete_holiday(request: Request, holiday_id: int, me: User = Depends(admin_user), db: Session = Depends(get_db)):
+    h = db.get(Holiday, holiday_id)
+    if h is not None:
+        audit(db, me, "holiday_delete", "holiday", h.id, date=h.date, name=h.name)
+        db.delete(h)
+        db.commit()
+        flash(request, "Holiday deleted.", "success")
+    return redirect("/admin/holidays")
+
+
+# ------------------------------------------------------------------ overtime rules
+@router.get("/rules")
+def rules(request: Request, db: Session = Depends(get_db)):
+    by_type = {r.day_type: r for r in db.scalars(select(OvertimeRule))}
+    return render(request, "admin/rules.html", {"rules": [by_type[t] for t in DAY_TYPES if t in by_type]})
+
+
+@router.post("/rules", dependencies=[Depends(verify_csrf)])
+async def save_rules(request: Request, me: User = Depends(admin_user), db: Session = Depends(get_db)):
+    form = await request.form()
+    try:
+        for rule in db.scalars(select(OvertimeRule)):
+            rule.til_factor = _dec(str(form.get(f"day_{rule.day_type}", "")), f"{rule.day_type} day factor")
+            rule.til_factor_night = _dec(str(form.get(f"night_{rule.day_type}", "")), f"{rule.day_type} night factor")
+        audit(db, me, "rules_update", "overtime_rules", None,
+              **{k: str(v) for k, v in form.items() if k != "csrf_token"})
+        db.commit()
+        flash(request, "TIL factors saved.", "success")
+    except ValueError as exc:
+        db.rollback()
+        flash(request, str(exc), "error")
+    return redirect("/admin/rules")
+
+
+# ------------------------------------------------------------------ settings
+def _settings_ctx(db: Session, **extra) -> dict:
+    base = get_settings()
+    return {
+        "show_amounts": get_flag(db, SETTING_SHOW_AMOUNTS),
+        "til_enabled": get_flag(db, SETTING_TIL_ENABLED),
+        "signature_required": get_flag(db, SETTING_SIGNATURE_REQUIRED),
+        "ldap": effective_settings(db, base),
+        "ldap_custom": set(ldap_overrides(db)),
+        "secret_status": secret_status(db, base),
+        **extra,
+    }
+
+
+@router.get("/settings")
+def settings_page(request: Request, db: Session = Depends(get_db)):
+    return render(request, "admin/settings.html", _settings_ctx(db))
+
+
+def _parse_ldap_form(form) -> dict:
+    """Validate the LDAP form. Raises ValueError with a user-facing message."""
+    values = {}
+    for attr, kind in LDAP_FIELDS.items():
+        raw = form.get(attr)
+        if kind is bool:
+            values[attr] = bool(raw)
+        elif kind is int:
+            try:
+                values[attr] = int(str(raw or "").strip())
+            except ValueError:
+                raise ValueError("Timeout must be a number of seconds.")
+        else:
+            values[attr] = str(raw or "").replace("\r\n", "\n").strip()
+    url = values["ldap_url"].lower()
+    if values["ldap_enabled"] and not url:
+        raise ValueError("The LDAP URL is required when LDAP authentication is enabled.")
+    if url and not (url.startswith("ldap://") or url.startswith("ldaps://")):
+        raise ValueError("The LDAP URL must start with ldap:// or ldaps://.")
+    if url.startswith("ldaps://") and values["ldap_start_tls"]:
+        raise ValueError("Use either ldaps:// or StartTLS (with ldap://), not both.")
+    if "{username}" not in values["ldap_user_filter"]:
+        raise ValueError("The user filter must contain the {username} placeholder.")
+    if not 1 <= values["ldap_timeout"] <= 120:
+        raise ValueError("Timeout must be between 1 and 120 seconds.")
+    pem = values["ldap_ca_cert_data"]
+    if pem and "-----BEGIN CERTIFICATE-----" not in pem:
+        raise ValueError("The CA certificate must be in PEM format (-----BEGIN CERTIFICATE-----).")
+    for attr in ("ldap_attr_username", "ldap_user_base_dn"):
+        if values["ldap_enabled"] and not values[attr]:
+            raise ValueError("User base DN and username attribute are required.")
+    return values
+
+
+@router.post("/settings/ldap", dependencies=[Depends(verify_csrf)])
+async def save_ldap(request: Request, me: User = Depends(admin_user), db: Session = Depends(get_db)):
+    form = await request.form()
+    try:
+        values = _parse_ldap_form(form)
+    except ValueError as exc:
+        flash(request, str(exc), "error")
+        return redirect("/admin/settings#ldap")
+    save_ldap_settings(db, get_settings(), values)
+    if form.get("clear_bind_password"):
+        row = db.get(AppSetting, LDAP_PREFIX + "bind_password")
+        if row is not None:
+            db.delete(row)
+    audit(db, me, "ldap_settings_update", "settings", None,
+          **{k: v for k, v in values.items() if k not in SECRET_FIELDS and k != "ldap_ca_cert_data"},
+          password_changed=bool(values["ldap_bind_password"]), ca_cert_set=bool(values["ldap_ca_cert_data"]))
+    db.commit()
+    flash(request, "LDAP settings saved - they apply to the next login. Use \"Test connection\" to check them.",
+          "success")
+    return redirect("/admin/settings#ldap")
+
+
+@router.post("/settings/ldap/reset", dependencies=[Depends(verify_csrf)])
+def reset_ldap(request: Request, me: User = Depends(admin_user), db: Session = Depends(get_db)):
+    n = clear_ldap_settings(db)
+    audit(db, me, "ldap_settings_reset", "settings", None, removed=n)
+    db.commit()
+    flash(request, "LDAP settings reset to the environment (.env) values.", "success")
+    return redirect("/admin/settings#ldap")
+
+
+@router.post("/settings/ldap/test", dependencies=[Depends(verify_csrf)])
+def test_ldap(request: Request, test_username: str = Form(""), me: User = Depends(admin_user),
+              db: Session = Depends(get_db)):
+    result = diagnose(effective_settings(db, get_settings()), test_username.strip())
+    audit(db, me, "ldap_test", "settings", None, username=test_username.strip(), ok=result.ok)
+    db.commit()
+    return render(request, "admin/settings.html", _settings_ctx(db, diagnosis=result, test_username=test_username))
+
+
+@router.post("/settings", dependencies=[Depends(verify_csrf)])
+def save_settings(request: Request, show_amounts: Optional[str] = Form(None), til_enabled: Optional[str] = Form(None),
+                  signature_required: Optional[str] = Form(None),
+                  me: User = Depends(admin_user), db: Session = Depends(get_db)):
+    set_setting(db, SETTING_SHOW_AMOUNTS, "1" if show_amounts else "0")
+    set_setting(db, SETTING_TIL_ENABLED, "1" if til_enabled else "0")
+    set_setting(db, SETTING_SIGNATURE_REQUIRED, "1" if signature_required else "0")
+    audit(db, me, "settings_update", "settings", None, show_amounts_to_employees=bool(show_amounts),
+          til_enabled=bool(til_enabled), signature_required=bool(signature_required))
+    db.commit()
+    flash(request, "Settings saved.", "success")
+    return redirect("/admin/settings")
+
+
+# ------------------------------------------------------------------ audit
+@router.get("/audit")
+def audit_log(request: Request, db: Session = Depends(get_db)):
+    rows = list(db.scalars(select(AuditLog).order_by(AuditLog.id.desc()).limit(500)))
+    return render(request, "admin/audit.html", {"rows": rows})

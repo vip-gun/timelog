@@ -1,0 +1,8 @@
+<nav class="subnav">
+  <a href="/admin/users" class="{{ 'active' if request.url.path.startswith('/admin/users') }}">Users</a>
+  <a href="/admin/grades" class="{{ 'active' if request.url.path.startswith('/admin/grades') }}">Grades &amp; on-call rates</a>
+  <a href="/admin/holidays" class="{{ 'active' if request.url.path.startswith('/admin/holidays') }}">Legal holidays</a>
+  {% if features.til %}<a href="/admin/rules" class="{{ 'active' if request.url.path.startswith('/admin/rules') }}">TIL factors</a>{% endif %}
+  <a href="/admin/settings" class="{{ 'active' if request.url.path.startswith('/admin/settings') }}">Settings</a>
+  <a href="/admin/audit" class="{{ 'active' if request.url.path.startswith('/admin/audit') }}">Audit log</a>
+</nav>

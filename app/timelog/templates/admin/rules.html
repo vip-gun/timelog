@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}TIL factors{% endblock %}
+{% block content %}
+{% include "admin/_nav.html" %}
+<h1>Time-in-lieu (TIL) factors</h1>
+<p class="help">TIL credit = (hours − night hours) × day factor + night hours × night factor. Defaults reproduce the payroll premiums: weekday/Saturday +50%, Sunday +70%, legal holiday +200%, night +30%.</p>
+<form method="post" action="/admin/rules" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <table class="table">
+    <thead><tr><th scope="col">Day type</th><th scope="col">Day factor</th><th scope="col">Night factor</th></tr></thead>
+    <tbody>
+    {% for r in rules %}
+      <tr>
+        <td>{{ DAY_TYPE_LABELS[r.day_type] }}</td>
+        <td><label class="sr-only" for="day-{{ r.day_type }}">{{ DAY_TYPE_LABELS[r.day_type] }} day factor</label>
+          <input id="day-{{ r.day_type }}" name="day_{{ r.day_type }}" value="{{ r.til_factor }}" class="w-sm" inputmode="decimal" required></td>
+        <td><label class="sr-only" for="night-{{ r.day_type }}">{{ DAY_TYPE_LABELS[r.day_type] }} night factor</label>
+          <input id="night-{{ r.day_type }}" name="night_{{ r.day_type }}" value="{{ r.til_factor_night }}" class="w-sm" inputmode="decimal" required></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <div class="actions"><button class="btn btn-primary">Save</button></div>
+</form>
+{% endblock %}

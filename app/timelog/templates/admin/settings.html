@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% macro field(attr, label, placeholder="", span=False, help="") -%}
+<label class="{{ 'span-2' if span }}">{{ label }}{% if attr in ldap_custom %} <span class="tag" title="Stored in the database (overrides .env)">custom</span>{% endif %}
+  <input name="{{ attr }}" value="{{ ldap[attr] }}" placeholder="{{ placeholder }}" autocomplete="off" spellcheck="false" class="mono-input">
+  {% if help %}<span class="hint">{{ help }}</span>{% endif %}
+</label>
+{%- endmacro %}
+{% macro toggle(attr, label, help="") -%}
+<label class="switch setting">
+  <input type="checkbox" name="{{ attr }}" value="1" {% if ldap[attr] %}checked{% endif %}>
+  <span class="track"><span class="thumb"></span></span>
+  <span><strong>{{ label }}</strong>{% if attr in ldap_custom %} <span class="tag">custom</span>{% endif %}{% if help %}<br><span class="muted small">{{ help }}</span>{% endif %}</span>
+</label>
+{%- endmacro %}
+{% block content %}
+{% include "admin/_nav.html" %}
+<div class="page-head"><div><span class="eyebrow">Administration</span><h1>Settings</h1></div></div>
+
+<form method="post" action="/admin/settings" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <h2>Features &amp; visibility</h2>
+  <div class="settings-list">
+  <label class="switch setting">
+    <input type="checkbox" name="til_enabled" value="1" {% if til_enabled %}checked{% endif %}>
+    <span class="track"><span class="thumb"></span></span>
+    <span><strong>Time in lieu (TIL)</strong><br>
+      <span class="muted small">Lets employees choose time off instead of payment for overtime. When off, every overtime entry is paid: the PAID/TIL choice, TIL credits, TIL columns and the TIL factors page are hidden, and new TIL entries are refused. Existing TIL entries stay visible and exported; drafts containing TIL must be re-entered as paid before submission.</span></span>
+  </label>
+  <label class="switch setting">
+    <input type="checkbox" name="signature_required" value="1" {% if signature_required %}checked{% endif %}>
+    <span class="track"><span class="thumb"></span></span>
+    <span><strong>Require a signature on submission</strong><br>
+      <span class="muted small">Employees draw their signature and confirm the declaration when sending an on-call or overtime sheet to their line manager. The signature is stored with a fingerprint (SHA-256) of the signed content, shown to the manager with an integrity check.</span></span>
+  </label>
+  <label class="switch setting">
+    <input type="checkbox" name="show_amounts" value="1" {% if show_amounts %}checked{% endif %}>
+    <span class="track"><span class="thumb"></span></span>
+    <span><strong>Show on-call amounts to employees</strong><br>
+      <span class="muted small">When off, employees no longer see the stipend, daily rates or totals on their own sheets and dashboard. Line managers (for the people below them) and administrators always see amounts. Days, interventions and overtime hours remain visible.</span></span>
+  </label>
+  </div>
+  <div class="actions"><button class="btn btn-primary">Save settings</button></div>
+</form>
+
+<section class="card" id="ldap">
+  <div class="sheet-head">
+    <h2>LDAP / Active Directory authentication</h2>
+    {% if ldap.ldap_enabled %}<span class="badge badge-approved">enabled</span>{% else %}<span class="badge badge-draft">disabled</span>{% endif %}
+  </div>
+  <p class="help">Values saved here are stored in the database and override the <code>LDAP_*</code> variables of the <code>.env</code> file (fields marked <span class="tag">custom</span>). Local accounts are always checked first, so a local administrator can still sign in if the directory settings are wrong.</p>
+
+  <form method="post" action="/admin/settings/ldap" class="ldap-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+
+    <fieldset>
+      <legend>Connection</legend>
+      {{ toggle("ldap_enabled", "Enable LDAP authentication", "Users without a local account sign in with their directory credentials.") }}
+      <div class="form-grid">
+        {{ field("ldap_url", "Server URL", "ldaps://dc01.corp.example.lu:636", True, "ldaps:// (port 636) or ldap:// with StartTLS (port 389).") }}
+        <label>Timeout (s){% if "ldap_timeout" in ldap_custom %} <span class="tag">custom</span>{% endif %}
+          <input name="ldap_timeout" type="number" min="1" max="120" value="{{ ldap.ldap_timeout }}"></label>
+      </div>
+      <div class="toggles">
+        {{ toggle("ldap_start_tls", "Use StartTLS", "Upgrade an ldap:// connection to TLS.") }}
+        {{ toggle("ldap_verify_cert", "Verify the server certificate", "Keep enabled in production.") }}
+      </div>
+      <label>CA certificate (PEM){% if "ldap_ca_cert_data" in ldap_custom %} <span class="tag">custom</span>{% endif %}
+        <textarea name="ldap_ca_cert_data" rows="4" class="mono-input" spellcheck="false" placeholder="-----BEGIN CERTIFICATE-----&#10;… Microsoft PKI root (and issuing) CA …&#10;-----END CERTIFICATE-----">{{ ldap.ldap_ca_cert_data }}</textarea>
+        <span class="hint">Paste the root (and issuing) CA of your Microsoft PKI. If empty, the file <code>{{ ldap.ldap_ca_cert_file or "LDAP_CA_CERT_FILE" }}</code> is used.</span>
+      </label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Service account</legend>
+      <div class="form-grid">
+        {{ field("ldap_bind_dn", "Bind DN", "CN=svc-timelog,OU=Service Accounts,DC=corp,DC=example,DC=lu", True) }}
+        <label class="span-2">Bind password
+          {% if secret_status == "database" %}<span class="tag">stored encrypted</span>{% elif secret_status == "environment" %}<span class="tag">from .env</span>{% elif secret_status == "unreadable" %}<span class="tag tag-late">unreadable - re-enter</span>{% endif %}
+          <input name="ldap_bind_password" type="password" autocomplete="new-password" placeholder="{{ 'Leave empty to keep the current password' if secret_status in ('database', 'environment') else '' }}">
+          <span class="hint">Write-only: the password is encrypted with a key derived from SECRET_KEY and never displayed. Rotating SECRET_KEY requires re-entering it.</span>
+        </label>
+      </div>
+      {% if secret_status == "database" %}<label class="check small"><input type="checkbox" name="clear_bind_password" value="1"> Remove the stored password (fall back to .env)</label>{% endif %}
+    </fieldset>
+
+    <fieldset>
+      <legend>Users</legend>
+      <div class="form-grid">
+        {{ field("ldap_user_base_dn", "User search base", "OU=Users,DC=corp,DC=example,DC=lu", True) }}
+        {{ field("ldap_user_filter", "User filter", "(&(objectClass=user)(sAMAccountName={username}))", True, "Must contain {username}.") }}
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Attribute mapping</legend>
+      <div class="form-grid">
+        {{ field("ldap_attr_username", "Username", "sAMAccountName") }}
+        {{ field("ldap_attr_first_name", "First name", "givenName") }}
+        {{ field("ldap_attr_last_name", "Last name", "sn") }}
+        {{ field("ldap_attr_display_name", "Display name", "displayName") }}
+        {{ field("ldap_attr_email", "E-mail", "mail") }}
+        {{ field("ldap_attr_employee_id", "Employee ID", "employeeID") }}
+        {{ field("ldap_attr_team", "Team", "department") }}
+        {{ field("ldap_attr_manager", "Line manager (DN)", "manager") }}
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Groups <span class="muted small">(nested membership resolved by AD; leave empty to manage the flag manually)</span></legend>
+      <div class="form-grid">
+        {{ field("ldap_group_required", "Allowed to sign in", "CN=APP-TimeLog-Users,OU=Groups,…", True) }}
+        {{ field("ldap_group_admin", "Administrators", "CN=APP-TimeLog-Admins,OU=Groups,…", True) }}
+        {{ field("ldap_group_expert", "Expert employees", "CN=APP-TimeLog-Experts,OU=Groups,…", True) }}
+      </div>
+    </fieldset>
+
+    <div class="actions">
+      <button class="btn btn-primary">Save LDAP settings</button>
+    </div>
+  </form>
+  {% if ldap_custom %}
+  <form method="post" action="/admin/settings/ldap/reset" class="actions" data-confirm="Discard all LDAP values stored in the database and use the .env values again?">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <button class="btn btn-ghost btn-sm">Reset to .env values</button>
+  </form>
+  {% endif %}
+</section>
+
+<section class="card" id="ldap-test">
+  <h2>Test connection</h2>
+  <p class="help">Uses the <strong>saved</strong> settings: connects, binds with the service account and, if a username is given, looks the user up with their groups and manager. No user password is needed.</p>
+  <form method="post" action="/admin/settings/ldap/test#ldap-test" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <label class="sr-only" for="test-username">Username to look up</label>
+    <input id="test-username" name="test_username" value="{{ test_username or '' }}" placeholder="Username to look up (optional)" autocomplete="off">
+    <button class="btn btn-secondary">Test connection</button>
+  </form>
+  {% if diagnosis %}
+  <ul class="checklist stagger">
+    {% for label, ok, detail in diagnosis.steps %}
+    <li class="{{ 'ok' if ok else 'ko' }}"><span class="mark">{{ '✓' if ok else '✕' }}</span><strong>{{ label }}</strong><span class="mono small">{{ detail }}</span></li>
+    {% endfor %}
+  </ul>
+  {% if diagnosis.profile %}{% set p = diagnosis.profile %}
+  <div class="table-wrap">
+    <table class="table">
+      <tbody>
+        <tr><th scope="row">Username</th><td class="mono">{{ p.username }}</td></tr>
+        <tr><th scope="row">Name</th><td>{{ p.first_name }} {{ p.last_name }}{% if p.display_name %} <span class="muted">({{ p.display_name }})</span>{% endif %}</td></tr>
+        <tr><th scope="row">E-mail</th><td>{{ p.email or "—" }}</td></tr>
+        <tr><th scope="row">Employee ID</th><td class="mono">{{ p.employee_id or "—" }}</td></tr>
+        <tr><th scope="row">Team</th><td>{{ p.team or "—" }}</td></tr>
+        <tr><th scope="row">Line manager</th><td>{{ p.manager.display_name or p.manager.username if p.manager else "—" }}</td></tr>
+        <tr><th scope="row">Administrator</th><td>{{ "n/a (manual)" if p.is_admin is none else ("yes" if p.is_admin else "no") }}</td></tr>
+        <tr><th scope="row">Expert</th><td>{{ "n/a (manual)" if p.is_expert is none else ("yes" if p.is_expert else "no") }}</td></tr>
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+  {% endif %}
+</section>
+{% endblock %}
