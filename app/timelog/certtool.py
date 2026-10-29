@@ -12,7 +12,6 @@ import datetime as dt
 import getpass
 import ipaddress
 import os
-import sys
 from pathlib import Path
 
 from cryptography import x509
@@ -61,7 +60,7 @@ def pfx2pem(pfx: Path, outdir: Path, password: str) -> x509.Certificate:
     return cert
 
 
-def main(argv=None) -> int:
+def main(argv=None) -> None:
     parser = argparse.ArgumentParser(prog="timelog.certtool", description=__doc__.split("\n\n")[0])
     sub = parser.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("selfsigned")
@@ -75,7 +74,7 @@ def main(argv=None) -> int:
     if args.cmd == "selfsigned":
         selfsigned(args.fqdn, args.outdir)
         print(f"Self-signed certificate for {args.fqdn} written to {args.outdir} (temporary: replace it with the PKI certificate).")
-        return 0
+        return
     password = os.environ.get(args.password_env, "") if args.password_env else getpass.getpass("PFX password: ")
     cert = pfx2pem(args.pfx, args.outdir, password)
     names = []
@@ -91,4 +90,4 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
