@@ -28,9 +28,18 @@
 </section>
 {% endif %}
 
+{% if conflicts %}
+<div class="banner banner-error">
+  <strong>On-call conflict:</strong> two employees cannot be on call at the same time. {{ target.full_name }} is booked on days where someone else is also on call:
+  <ul class="conflict-list">
+  {% for date, c in conflicts.items() %}<li><strong>{{ date|date }}</strong> {{ date.strftime("%a") }}: {% if c.names %}{{ c.names|join(", ") }}{% endif %}{% if c.hidden %}{{ " and " if c.names }}{{ c.hidden }} other employee{{ "s" if c.hidden > 1 }} outside your team{% endif %}</li>{% endfor %}
+  </ul>
+</div>
+{% endif %}
+
 {% if editable %}
 <p class="help">
-  Use the <strong>week</strong> switch to book a whole rotation week ({{ week_start_name }} → {{ week_end_name }}) in one click, or tick individual days. {% if is_expert %}Tick <strong>Intervention</strong> when you were called: the daily rate is then doubled.{% else %}If you were called, log the intervention (hours, incident #, description) on your <a href="/overtime/{{ year }}/{{ month }}">overtime sheet</a>: entries on your on-call days are recognised automatically and shown in the <strong>Intervention</strong> column.{% endif %}
+  Use the <strong>week</strong> switch to book a whole rotation week ({{ week_start_name }} {{ week_handover }} → the following {{ week_start_name }} {{ week_handover }}; days {{ week_start_name }} to {{ week_end_name }} are booked) in one click, or tick individual days. {% if is_expert %}Tick <strong>Intervention</strong> when you were called: the daily rate is then doubled.{% else %}If you were called, log the intervention (hours, incident #, description) on your <a href="/overtime/{{ year }}/{{ month }}">overtime sheet</a>: entries on your on-call days are recognised automatically and shown in the <strong>Intervention</strong> column.{% endif %}
 </p>
 {% elif not own %}
 <p class="help"><a href="/overtime/{{ year }}/{{ month }}?user_id={{ target.id }}">View overtime sheet &rarr;</a></p>
@@ -47,7 +56,7 @@
   <tbody>
   {% for r in rows %}
     {% set key = r.date.isoformat() %}{% set d = r.row %}
-    <tr class="dt-{{ r.day_type }}{% if d %} on{% endif %}{% if r.week %} week-first{% endif %}" data-type="{{ r.day_type }}" data-week="{{ r.week_key }}">
+    <tr class="dt-{{ r.day_type }}{% if d %} on{% endif %}{% if r.week %} week-first{% endif %}{% if r.conflict %} conflict-row{% endif %}" data-type="{{ r.day_type }}" data-week="{{ r.week_key }}">
       {% if r.week %}{% set w = r.week %}
       <td rowspan="{{ w.rowspan }}" class="week-cell">
         <label class="switch" title="Book the whole rotation week {{ w.start|date }} → {{ w.end|date }}">
@@ -58,7 +67,7 @@
         {% if w.spill %}<span class="spill" title="These days are booked on the {{ w.spill_dir }} month's sheet">+ {{ w.spill_label }} ({{ w.spill_dir }} month)</span>{% endif %}
       </td>
       {% endif %}
-      <td>{{ r.date|date }}</td>
+      <td>{{ r.date|date }}{% if r.conflict %} <span class="tag tag-conflict" title="{{ r.conflict.names|join(', ') }}{{ ' + ' ~ r.conflict.hidden ~ ' outside your team' if r.conflict.hidden }}">⚠ conflict</span>{% endif %}</td>
       <td>{{ r.date.strftime("%a") }}</td>
       <td><span class="daytype dt-badge-{{ r.day_type }}">{{ DAY_TYPE_LABELS[r.day_type] }}</span>{% if r.holiday %} <span class="muted small">{{ r.holiday }}</span>{% endif %}</td>
       <td class="c"><input type="checkbox" name="oc_{{ key }}" value="1" class="js-oc" {% if d %}checked{% endif %} {% if not editable %}disabled{% endif %} aria-label="On-call {{ r.date|date }}"></td>

@@ -22,7 +22,8 @@ ARG GIT_COMMIT=""
 RUN echo "${BUILD_TIMESTAMP:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}" > timelog/BUILD_TIMESTAMP \
  && echo "${GIT_COMMIT}" > timelog/BUILD_COMMIT
 
-RUN useradd --no-create-home --uid 10001 --home-dir /app timelog
+RUN useradd --no-create-home --uid 10001 --home-dir /app timelog \
+ && mkdir /backups && chown timelog /backups && chmod 700 /backups
 USER timelog
 
 EXPOSE 8000

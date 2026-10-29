@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Backup{% endblock %}
+{% block content %}
+{% include "admin/_nav.html" %}
+<div class="page-head"><div><span class="eyebrow">Administration</span><h1>Backup</h1></div></div>
+
+<section class="card">
+  <div class="sheet-head">
+    <h2>Create a backup</h2>
+    <form method="post" action="/admin/backup/create">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <button class="btn btn-primary">Back up now</button>
+    </form>
+  </div>
+  <p class="help">A backup is a compressed file holding <strong>every table</strong> of the database ({{ database }}): users, declarations, signatures, settings and the audit log.
+    Files are written to <code>{{ backup_dir }}</code> on the server.</p>
+  <div class="banner banner-info"><strong>Encrypted:</strong> every backup is encrypted with AES-256-GCM (key derived from a passphrase with a random salt per file).
+    The passphrase comes from <code>{{ key_source }}</code>{% if key_source == "SECRET_KEY" %}: set <code>BACKUP_PASSPHRASE</code> in <code>.env</code> to use an independent passphrase, and store it in a password manager{% endif %}.
+    <strong>Without it a backup cannot be read</strong>, so keep it separate from the backups themselves.</div>
+</section>
+
+<section class="card">
+  <h2>Schedule</h2>
+  <form method="post" action="/admin/backup/schedule" class="form-grid" id="backup-schedule">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <label class="switch setting span-all">
+      <input type="checkbox" name="enabled" value="1" {% if sch.enabled %}checked{% endif %}>
+      <span class="track"><span class="thumb"></span></span>
+      <span><strong>Run backups automatically</strong></span>
+    </label>
+    <label>Frequency
+      <select name="frequency" id="bk-frequency">
+        <option value="daily" {% if sch.frequency == "daily" %}selected{% endif %}>Every day</option>
+        <option value="weekly" {% if sch.frequency == "weekly" %}selected{% endif %}>Every week</option>
+      </select></label>
+    <label>Day of the week <span class="muted small">(weekly)</span>
+      <select name="weekday" id="bk-weekday">
+        {% for name in weekdays %}<option value="{{ loop.index0 }}" {% if sch.weekday == loop.index0 %}selected{% endif %}>{{ name }}</option>{% endfor %}
+      </select></label>
+    <label>Time (UTC)
+      <select name="time" id="bk-time">
+        {% for m in range(0, 1440, 30) %}{% set t = '%02d:%02d' % (m // 60, m % 60) %}<option value="{{ t }}" {% if sch.minute == m %}selected{% endif %}>{{ t }}</option>{% endfor %}
+      </select></label>
+    <label>Automatic backups to keep
+      <input type="number" name="keep" min="1" max="365" value="{{ sch.keep }}" required></label>
+    <div class="actions span-all"><button class="btn btn-primary">Save schedule</button></div>
+  </form>
+  <p class="help">
+    {% if sch.enabled %}Next run: <strong>{{ next_run|datetime }}</strong>. {% else %}Scheduled backups are <strong>off</strong>. {% endif %}
+    The oldest automatic backups beyond the number to keep are deleted; manual, uploaded and pre-restore backups are never removed automatically.
+    Times are in UTC. The schedule is checked every minute while the application runs.
+  </p>
+</section>
+
+<section class="card">
+  <h2>Backups on the server</h2>
+  {% if files %}
+  <div class="table-wrap">
+  <table class="table">
+    <thead><tr><th scope="col">File</th><th scope="col">Type</th><th scope="col">Created (UTC)</th><th scope="col" class="r">Size</th><th scope="col"></th></tr></thead>
+    <tbody>
+    {% for f in files %}
+      <tr>
+        <td class="mono">{{ f.name }}</td>
+        <td><span class="tag">{{ f.kind }}</span></td>
+        <td>{{ f.created|datetime }}</td>
+        <td class="r">{{ "%.1f"|format(f.size / 1024) }} KB</td>
+        <td class="r">
+          <a class="btn btn-ghost btn-sm" href="/admin/backup/download/{{ f.name }}">Download</a>
+          <form method="post" action="/admin/backup/delete/{{ f.name }}" class="inline" data-confirm="Delete this backup?">
+            <input type="hidden" name="csrf_token" value="{{ csrf }}">
+            <button class="btn btn-danger btn-sm">Delete</button>
+          </form>
+        </td>
+      </tr>
+      <tr>
+        <td colspan="5">
+          <form method="post" action="/admin/backup/restore/{{ f.name }}" class="inline-form" data-confirm="Replace the WHOLE database with this backup?">
+            <input type="hidden" name="csrf_token" value="{{ csrf }}">
+            <label class="sr-only" for="rs-{{ loop.index }}">Type RESTORE to restore {{ f.name }}</label>
+            <input id="rs-{{ loop.index }}" name="confirm" placeholder="Type RESTORE to restore this backup" autocomplete="off">
+            <button class="btn btn-secondary btn-sm">Restore</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="help"><strong>Restore</strong> replaces the whole content of the database with the backup (users, sheets, settings, audit log). A safety copy of the current state is written first ("pre-restore"). You are signed out afterwards because the accounts are those of the backup.</p>
+  {% else %}
+  <p class="muted">No backup yet.</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>Upload a backup</h2>
+  <p class="help">Add a backup file made earlier (for example on another server) to the list above. It is decrypted and checked first, then stored encrypted with this server's key; nothing is restored until you restore it from the list. If the file was made with a different passphrase, enter that passphrase. Maximum 200 MB.</p>
+  <form method="post" action="/admin/backup/upload" enctype="multipart/form-data" class="form-grid">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <label>Backup file (.tlbk)
+      <input id="backup-file" type="file" name="file" accept=".tlbk" required></label>
+    <label>Passphrase of that file <span class="muted small">(only if different from this server's)</span>
+      <input type="password" name="source_passphrase" autocomplete="off"></label>
+    <div class="actions span-all"><button class="btn btn-secondary">Upload</button></div>
+  </form>
+</section>
+{% endblock %}

@@ -261,7 +261,9 @@ class AppSetting(Base):
 SETTING_SHOW_AMOUNTS = "show_amounts_to_employees"
 SETTING_TIL_ENABLED = "til_enabled"  # time in lieu as an overtime compensation option
 SETTING_SIGNATURE_REQUIRED = "signature_required"  # employees sign when submitting a sheet
-SETTING_DEFAULTS = {SETTING_SHOW_AMOUNTS: "1", SETTING_TIL_ENABLED: "1", SETTING_SIGNATURE_REQUIRED: "0"}
+SETTING_ONCALL_WEEK_START = "oncall_week_start"  # weekday 0-6 the on-call rotation starts on (env default: Friday)
+SETTING_ONCALL_HANDOVER = "oncall_handover"  # HH:MM of the handover, shown to employees (days are booked whole)
+SETTING_DEFAULTS = {SETTING_ONCALL_HANDOVER: "18:00", SETTING_SHOW_AMOUNTS: "1", SETTING_TIL_ENABLED: "1", SETTING_SIGNATURE_REQUIRED: "0"}
 
 
 class AuditLog(Base):

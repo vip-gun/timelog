@@ -11,18 +11,19 @@
 </div>
 <section class="card">
   <h2>Waiting for my validation</h2>
+  {% if conflicts %}<div class="banner banner-error"><strong>On-call conflict:</strong> some submitted on-call sheets overlap with another employee's on-call days. Two employees cannot be on call at the same time: check them before approving.</div>{% endif %}
   {% if pending %}
   <div class="table-wrap">
   <table class="table animate">
     <thead><tr><th scope="col">Employee</th><th scope="col">Team</th><th scope="col">Type</th><th scope="col">Work month</th><th scope="col">Content</th><th scope="col">Submitted</th><th scope="col"></th></tr></thead>
     <tbody>
     {% for s, summary, url in pending %}
-      <tr>
+      <tr class="{{ 'conflict-row' if conflicts.get(s.id) }}">
         <td><strong>{{ s.user.full_name }}</strong></td>
         <td>{{ s.user.team }}</td>
         <td>{{ "On-call" if s.kind == "oncall" else "Overtime" }}</td>
         <td>{{ month_label(s.year, s.month) }}{% if s.seq > 1 %} <span class="tag tag-late">late claim</span>{% endif %}</td>
-        <td>{{ summary }}</td>
+        <td>{{ summary }}{% if conflicts.get(s.id) %} <span class="tag tag-conflict" title="Another employee is also on call on: {% for d in conflicts[s.id] %}{{ d|date }}{{ ", " if not loop.last }}{% endfor %}">⚠ {{ conflicts[s.id]|length }} day(s) in conflict</span>{% endif %}</td>
         <td class="small">{{ s.submitted_at|datetime }}</td>
         <td class="r"><a class="btn btn-primary btn-sm" href="{{ url }}">Review &rarr;</a></td>
       </tr>

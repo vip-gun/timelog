@@ -1,22 +1,28 @@
 import datetime as dt
+import io
+import logging
+from pathlib import Path
 from decimal import Decimal, InvalidOperation
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy import extract, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from .. import backup as backups
 from ..access import subordinate_ids
 from ..app_settings import (
-    LDAP_FIELDS, LDAP_PREFIX, SECRET_FIELDS, clear_ldap_settings, effective_settings, get_flag, ldap_overrides,
+    LDAP_FIELDS, LDAP_PREFIX, oncall_week, SECRET_FIELDS, clear_ldap_settings, effective_settings, get_flag, ldap_overrides,
     save_ldap_settings, secret_status, set_setting,
 )
+from ..calendar_utils import parse_hhmm
 from ..config import get_settings
 from ..ldap_auth import diagnose
-from ..db import get_db
+from ..db import get_db, get_engine
 from ..ics_import import MAX_BYTES, IcsError, parse_ics
-from ..models import DAY_TYPES, SETTING_SHOW_AMOUNTS, SETTING_SIGNATURE_REQUIRED, SETTING_TIL_ENABLED, AppSetting, AuditLog, Grade, Holiday, OvertimeRule, User
+from ..models import DAY_TYPES, SETTING_ONCALL_HANDOVER, SETTING_ONCALL_WEEK_START, SETTING_SHOW_AMOUNTS, SETTING_SIGNATURE_REQUIRED, SETTING_TIL_ENABLED, AppSetting, AuditLog, Grade, Holiday, OvertimeRule, User, utcnow
 from ..security import admin_user, check_password_policy, flash, hash_password, verify_csrf
 from ..web import redirect, render
 from ..workflow import audit
@@ -174,6 +180,14 @@ def save_grade(request: Request, grade_id: Optional[int] = Form(None), code: str
 
 
 # ------------------------------------------------------------------ holidays
+@router.get("/docs")
+def docs(request: Request, db: Session = Depends(get_db)):
+    day, handover = oncall_week(db, get_settings())
+    names = backups.WEEKDAYS
+    return render(request, "admin/docs.html", {"week_start_name": names[day], "week_end_name": names[(day + 6) % 7],
+                                               "week_handover": handover})
+
+
 @router.get("/holidays")
 def holidays(request: Request, db: Session = Depends(get_db)):
     return render(request, "admin/holidays.html", {"holidays": list(db.scalars(select(Holiday).order_by(Holiday.date)))})
@@ -279,6 +293,8 @@ def _settings_ctx(db: Session, **extra) -> dict:
         "show_amounts": get_flag(db, SETTING_SHOW_AMOUNTS),
         "til_enabled": get_flag(db, SETTING_TIL_ENABLED),
         "signature_required": get_flag(db, SETTING_SIGNATURE_REQUIRED),
+        "week_start": oncall_week(db, base)[0], "handover": oncall_week(db, base)[1],
+        "weekdays": backups.WEEKDAYS,
         "ldap": effective_settings(db, base),
         "ldap_custom": set(ldap_overrides(db)),
         "secret_status": secret_status(db, base),
@@ -367,13 +383,25 @@ def test_ldap(request: Request, test_username: str = Form(""), me: User = Depend
 
 @router.post("/settings", dependencies=[Depends(verify_csrf)])
 def save_settings(request: Request, show_amounts: Optional[str] = Form(None), til_enabled: Optional[str] = Form(None),
-                  signature_required: Optional[str] = Form(None),
-                  me: User = Depends(admin_user), db: Session = Depends(get_db)):
+                  signature_required: Optional[str] = Form(None), week_start: Optional[int] = Form(None),
+                  handover: str = Form(""), me: User = Depends(admin_user), db: Session = Depends(get_db)):
     set_setting(db, SETTING_SHOW_AMOUNTS, "1" if show_amounts else "0")
     set_setting(db, SETTING_TIL_ENABLED, "1" if til_enabled else "0")
     set_setting(db, SETTING_SIGNATURE_REQUIRED, "1" if signature_required else "0")
+    if week_start is not None:
+        try:
+            parse_hhmm(handover)
+        except ValueError:
+            flash(request, "Invalid handover time.", "error")
+            return redirect("/admin/settings")
+        if not 0 <= week_start <= 6:
+            flash(request, "Invalid week start day.", "error")
+            return redirect("/admin/settings")
+        set_setting(db, SETTING_ONCALL_WEEK_START, str(week_start))
+        set_setting(db, SETTING_ONCALL_HANDOVER, handover)
     audit(db, me, "settings_update", "settings", None, show_amounts_to_employees=bool(show_amounts),
-          til_enabled=bool(til_enabled), signature_required=bool(signature_required))
+          til_enabled=bool(til_enabled), signature_required=bool(signature_required),
+          oncall_week_start=week_start, oncall_handover=handover)
     db.commit()
     flash(request, "Settings saved.", "success")
     return redirect("/admin/settings")
@@ -384,3 +412,125 @@ def save_settings(request: Request, show_amounts: Optional[str] = Form(None), ti
 def audit_log(request: Request, db: Session = Depends(get_db)):
     rows = list(db.scalars(select(AuditLog).order_by(AuditLog.id.desc()).limit(500)))
     return render(request, "admin/audit.html", {"rows": rows})
+
+
+# ------------------------------------------------------------------ backup
+def _backup_ctx(db: Session, **extra) -> dict:
+    s = get_settings()
+    sch = backups.load_schedule(db)
+    now = utcnow()
+    return {"files": backups.list_backups(s.backup_dir), "backup_dir": s.backup_dir, "sch": sch,
+            "next_run": backups.next_occurrence(now, sch) if sch.enabled else None,
+            "weekdays": backups.WEEKDAYS, "database": db.get_bind().dialect.name,
+            "key_source": "BACKUP_PASSPHRASE" if s.backup_passphrase else "SECRET_KEY", **extra}
+
+
+@router.get("/backup")
+def backup_page(request: Request, db: Session = Depends(get_db)):
+    return render(request, "admin/backup.html", _backup_ctx(db))
+
+
+@router.post("/backup/schedule", dependencies=[Depends(verify_csrf)])
+def backup_schedule(request: Request, enabled: Optional[str] = Form(None), frequency: str = Form("daily"),
+                    weekday: int = Form(0), time: str = Form("02:00"), keep: int = Form(14),
+                    me: User = Depends(admin_user), db: Session = Depends(get_db)):
+    try:
+        minute = parse_hhmm(time)
+    except ValueError:
+        minute = -1
+    if frequency not in ("daily", "weekly") or not 0 <= weekday <= 6 or not 0 <= minute < 1440 or not 1 <= keep <= 365:
+        flash(request, "Invalid schedule: check the frequency, time and the number of backups to keep (1-365).", "error")
+        return redirect("/admin/backup")
+    sch = backups.Schedule(enabled=bool(enabled), frequency=frequency, weekday=weekday, minute=minute, keep=keep)
+    backups.save_schedule(db, sch)
+    audit(db, me, "backup_schedule", "backup", None, enabled=sch.enabled, frequency=frequency, weekday=weekday,
+          time=time, keep=keep)
+    db.commit()
+    flash(request, "Backup schedule saved." if sch.enabled else "Scheduled backups are switched off.", "success")
+    return redirect("/admin/backup")
+
+
+@router.post("/backup/create", dependencies=[Depends(verify_csrf)])
+def backup_create(request: Request, me: User = Depends(admin_user), db: Session = Depends(get_db)):
+    s = get_settings()
+    try:
+        made = backups.create_backup(get_engine(), s.backup_dir, backups.passphrase_of(s), "manual")
+    except OSError as exc:
+        flash(request, f"The backup could not be written: {exc.strerror or exc}.", "error")
+        return redirect("/admin/backup")
+    audit(db, me, "backup_create", "backup", None, name=made.name, size=made.size)
+    db.commit()
+    flash(request, f"Backup {made.name} created (encrypted).", "success")
+    return redirect("/admin/backup")
+
+
+@router.get("/backup/download/{name}")
+def backup_download(name: str, me: User = Depends(admin_user), db: Session = Depends(get_db)):
+    try:
+        path = backups.backup_path(get_settings().backup_dir, name)
+    except backups.BackupError:
+        raise HTTPException(status_code=404, detail="Not found")
+    audit(db, me, "backup_download", "backup", None, name=name)
+    db.commit()
+    return FileResponse(path, media_type="application/octet-stream", filename=name, headers={"Cache-Control": "no-store"})
+
+
+@router.post("/backup/upload", dependencies=[Depends(verify_csrf)])
+async def backup_upload(request: Request, file: UploadFile = File(...), source_passphrase: str = Form(""),
+                        me: User = Depends(admin_user), db: Session = Depends(get_db)):
+    s = get_settings()
+    data = await file.read(backups.MAX_UPLOAD_BYTES + 1)
+    if len(data) > backups.MAX_UPLOAD_BYTES:
+        flash(request, "This file is too large (200 MB maximum).", "error")
+        return redirect("/admin/backup")
+    try:
+        name = backups.store_uploaded(s.backup_dir, data, source_passphrase or backups.passphrase_of(s),
+                                      backups.passphrase_of(s))
+    except backups.BackupError as exc:
+        flash(request, str(exc), "error")
+        return redirect("/admin/backup")
+    audit(db, me, "backup_upload", "backup", None, name=name, size=len(data))
+    db.commit()
+    flash(request, f"Backup uploaded as {name}. Restore it from the list below if you want to use it.", "success")
+    return redirect("/admin/backup")
+
+
+@router.post("/backup/delete/{name}", dependencies=[Depends(verify_csrf)])
+def backup_delete(request: Request, name: str, me: User = Depends(admin_user), db: Session = Depends(get_db)):
+    try:
+        backups.delete_backup(get_settings().backup_dir, name)
+    except backups.BackupError as exc:
+        flash(request, str(exc), "error")
+        return redirect("/admin/backup")
+    audit(db, me, "backup_delete", "backup", None, name=name)
+    db.commit()
+    flash(request, f"Backup {name} deleted.", "success")
+    return redirect("/admin/backup")
+
+
+@router.post("/backup/restore/{name}", dependencies=[Depends(verify_csrf)])
+def backup_restore(request: Request, name: str, confirm: str = Form(""), me: User = Depends(admin_user),
+                   db: Session = Depends(get_db)):
+    if confirm.strip() != "RESTORE":
+        flash(request, "Type RESTORE to confirm: the whole database is replaced by the backup.", "error")
+        return redirect("/admin/backup")
+    s = get_settings()
+    try:
+        info = backups.restore_backup(get_engine(), s.backup_dir, name, backups.passphrase_of(s))
+    except backups.BackupError as exc:
+        flash(request, str(exc), "error")
+        return redirect("/admin/backup")
+    except Exception as exc:  # the transaction was rolled back: the database is unchanged
+        logging.getLogger(__name__).exception("Backup restore failed")
+        db.rollback()
+        flash(request, f"Restore failed, the database was left unchanged ({type(exc).__name__}).", "error")
+        return redirect("/admin/backup")
+    db.rollback()
+    with Session(get_engine()) as fresh:
+        audit(fresh, None, "backup_restore", "backup", None, name=name, restored_by=me.username,
+              created=info["created"], app_version=info["app_version"])
+        fresh.commit()
+    request.session.clear()  # the signed-in account may not exist in the backup
+    flash(request, f"Database restored from {name}. A safety copy of the previous state was saved first. "
+                   "Sign in again: the accounts are those of the backup.", "success")
+    return redirect("/login")

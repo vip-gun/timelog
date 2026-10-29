@@ -1,6 +1,6 @@
 # TimeLog: on-call and overtime declarations
 
-This web app replaces the `on-call-template.xlsx` / `IT_OnCall` / `IT_Overtime` spreadsheets.
+This web app handles on-call and overtime declarations, their validation and the monthly Finance export.
 - **Employees** declare on-call days and overtime.
 - **Line managers** validate them and export a monthly `.xlsx` for Finance.
 
@@ -37,18 +37,72 @@ docker compose exec app python -m timelog.demo            # prints a random pass
 docker compose exec app python -m timelog.demo '<password>' # or set one
 ```
 
-### Air-gapped server
-The target host needs no internet. Build on a connected machine, or set `PIP_INDEX_URL` to an internal
-PyPI mirror and pull the base images from an internal registry.
+## Offline (air-gapped) deployment
+
+Timelog runs as Docker containers and is meant to be deployed on-premise **without internet access**. Two server targets
+are supported:
+
+| Target | How it runs | Installer |
+|---|---|---|
+| **Red Hat Enterprise Linux 9** (x86_64) | Docker Engine on RHEL, SELinux can stay enforcing | `install.sh` (can install Docker from RPMs shipped in the package) |
+| **Windows Server 2022+** | **Linux containers** through Docker on WSL 2 (Docker Engine in WSL 2, or Docker Desktop). Windows-native containers are not supported | `install.ps1` (Docker must be installed beforehand) |
+
+You build one **offline package** (a zip) per target on a machine with internet access and Docker, carry it to the server and
+install it there. The server needs nothing else: no registry, no PyPI, no `openssl` (certificates are handled by a tool inside
+the application image).
+
+### 1. Build the package (connected machine)
+Requirements: Docker (28+, with `buildx`), `zip`, `python3`, internet access (PyPI, Docker Hub, Docker's RPM repository), or your
+internal mirrors (`PIP_INDEX_URL`, `PIP_TRUSTED_HOST`).
 ```bash
-scripts/offline-bundle.sh                  # -> dist/timelog-images.tar.gz + dist/timelog-config.tar.gz
-# on the target host:
-docker load -i timelog-images.tar.gz
-tar xzf timelog-config.tar.gz && cp .env.example .env   # edit
-docker compose up -d --no-build
+scripts/make-offline-package.sh                          # RHEL 9, x86_64  -> dist/timelog-<version>-offline-rhel9-amd64.zip
+TARGET=windows scripts/make-offline-package.sh           # Windows Server  -> dist/timelog-<version>-offline-windows-amd64.zip
+INCLUDE_DOCKER_RPMS=0 scripts/make-offline-package.sh    # RHEL, but the server already has Docker (smaller package)
+PLATFORM=linux/arm64 scripts/make-offline-package.sh     # other CPU architecture (default linux/amd64)
 ```
+A `.sha256` file is written next to each zip. The images are built for the **server's** CPU architecture, which can differ
+from your build machine's (for example an Apple Silicon laptop building for x86_64; this goes through emulation and takes
+longer); the script checks the architecture of every saved image and stops on a mismatch. Run the tests
+(`cd app && .venv/bin/pytest`) before packaging a release.
+
+| In the zip | Purpose |
+|---|---|
+| `images/timelog-images.tar.gz` | The three container images: application, nginx, PostgreSQL 16 |
+| `docker-compose.yml`, `.env.example`, `proxy/` | Stack definition and configuration template |
+| `install.sh` or `install.ps1` | Verifies the package, (RHEL) installs Docker, loads the images, generates `.env` with random secrets, creates a temporary certificate, opens the firewall, starts the stack. Also used for upgrades |
+| `convert-pfx.sh` / `convert-pfx.ps1` | Turns the **PFX** issued by the PKI into the PEM files nginx needs (`certs/server.crt`, `certs/server.key`) |
+| `docker-rpms/` (RHEL only) | Docker Engine, containerd and the Compose plugin as RPMs, for `install.sh --install-docker` |
+| `certs/README.md`, `docs/` | Certificate file layout; this README, the design and business rules, the Python dependency list |
+| `README-OFFLINE.md` | The deployment guide for the target OS (requirements, install, upgrade, troubleshooting) |
+| `CHECKSUMS.sha256`, `MANIFEST.txt`, `VERSION` | Integrity checks and what the package contains (version, build time, commit, platform, target) |
+
+### 2. Install (target server)
+Copy the zip (and its `.sha256`) to the server, then:
+```bash
+# RHEL 9
+unzip timelog-<version>-offline-rhel9-amd64.zip && cd timelog-<version>-offline-rhel9-amd64
+sudo ./install.sh --server-name timelog.corp.example.lu --install-docker --open-firewall
+```
+```powershell
+# Windows Server (elevated PowerShell)
+Expand-Archive timelog-<version>-offline-windows-amd64.zip -DestinationPath C:\timelog
+cd C:\timelog\timelog-<version>-offline-windows-amd64
+powershell -ExecutionPolicy Bypass -File .\install.ps1 -ServerName timelog.corp.example.lu -OpenFirewall
+```
+The installer prints the first administrator password. Afterwards, in this order: install the PKI certificate
+(`convert-pfx.sh` / `convert-pfx.ps1`, then `docker compose restart proxy`), configure LDAP in **Admin > Settings** (use *Test
+connection*), schedule backups in **Admin > Backup**, and keep a protected copy of `.env` (`SECRET_KEY` and `BACKUP_PASSPHRASE`
+are needed to read the LDAP password and the backups). Step-by-step guides, upgrade and troubleshooting are in
+`README-OFFLINE.md` inside each package.
+
+### 3. Upgrade
+Build a new package, unzip it next to the installed one, copy `.env` and `certs/` over and run `install.sh --upgrade` (or
+`install.ps1 -Upgrade`). Data stays in the Docker volumes (`db-data`, `backups`); the application creates new tables by itself
+at start-up. Take a backup first (Admin > Backup). To roll back, run the upgrade from the previous package folder.
 
 ## HTTPS with a Microsoft PKI certificate
+If the PKI gives you a **PFX** file, in an offline package use `convert-pfx.sh` / `convert-pfx.ps1` (it runs inside the application
+image, no openssl needed); the manual `openssl` commands are in Admin > Documentation.
 1. `scripts/make-csr.sh timelog.corp.example.lu [alias ...]` creates `certs/server.key` and `certs/server.csr`.
    The CSR has its SAN set, uses serverAuth and an RSA 3072 key.
 2. On a domain-joined Windows host:
@@ -104,12 +158,15 @@ are paid with their work month. Anything approved later (including late claims f
 payroll period and is shaded and labelled "Late claim".
 - **Summary**: status of every person in scope, so missing or pending sheets are visible.
 - **On-Call**: day counts W/Sat/Sun/H, Expert interventions, amount.
-- **On-Call Grid**: the legacy layout, with an extra "– Incidents/calls" row for Experts.
+- **On-Call Grid**: one row per person and one column per day, with an extra "– Incidents/calls" row for Experts.
 - **Overtime Payroll**: hours by day type, night hours, HL100 / HL101 / HL111 / HL130 / HL121, TIL hours and TIL credit.
 - **Overtime Detail** and **On-Call Detail**: line by line.
 
 ## Operations
-- Backup: `scripts/backup-db.sh` writes `backups/timelog-*.sql.gz` (schedule it with cron).
+- Backup: **Admin › Backup** sets the schedule (daily or weekly, UTC) and creates, downloads, uploads and restores
+  backups. They are **encrypted** (AES-256-GCM) with `BACKUP_PASSPHRASE`, or a key derived from `SECRET_KEY`, and kept in the
+  `backups` volume. Store the passphrase safely and copy the files off the host. `scripts/backup-db.sh` (native
+  `pg_dump`, not encrypted) still works for cron.
 - Logs: `docker compose logs -f app proxy`.
 - Health: `GET /healthz`.
 - Update: `scripts/build.sh` (or load the new image), then `docker compose up -d`. The footer of every page shows

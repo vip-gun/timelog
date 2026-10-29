@@ -10,7 +10,7 @@ from ..db import get_db
 from ..models import KIND_ONCALL, SUBMITTED, Sheet, Signature, User
 from ..security import current_user, flash, verify_csrf
 from ..web import redirect, render
-from .common import sheet_url
+from .common import conflicts_for_viewer, sheet_url
 from .notifications import notify_decided
 
 router = APIRouter()
@@ -33,7 +33,9 @@ def approvals(request: Request, me: User = Depends(current_user), db: Session = 
     pending = list(db.scalars(q.order_by(Sheet.submitted_at)))
     recent = list(db.scalars(
         select(Sheet).where(Sheet.decided_by_id == me.id).order_by(Sheet.decided_at.desc()).limit(20)))
+    conflicts = {s.id: conflicts_for_viewer(db, me, s) for s in pending if s.kind == KIND_ONCALL}
     return render(request, "approvals.html", {
+        "conflicts": {sid: c for sid, c in conflicts.items() if c},
         "pending": [(s, sheet_summary(s), sheet_url(s, me)) for s in pending],
         "recent": [(s, sheet_summary(s), sheet_url(s, me)) for s in recent],
     })

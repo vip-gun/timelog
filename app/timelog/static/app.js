@@ -17,21 +17,6 @@
     sel.addEventListener("change", function () { sel.form.submit(); });
   });
 
-  // Ripple effect on buttons
-  document.addEventListener("pointerdown", function (ev) {
-    var btn = ev.target.closest && ev.target.closest(".btn");
-    if (!btn || reduceMotion) return;
-    var rect = btn.getBoundingClientRect();
-    var size = Math.max(rect.width, rect.height);
-    var dot = document.createElement("span");
-    dot.className = "ripple";
-    dot.style.width = dot.style.height = size + "px";
-    dot.style.left = (ev.clientX - rect.left - size / 2) + "px";
-    dot.style.top = (ev.clientY - rect.top - size / 2) + "px";
-    btn.appendChild(dot);
-    setTimeout(function () { dot.remove(); }, 650);
-  });
-
   // Toasts: dismissable, auto-hide after a while (errors stay longer)
   document.querySelectorAll(".toasts .flash").forEach(function (toast, i) {
     function close() {
@@ -63,11 +48,11 @@
     var target = Number.parseFloat(el.getAttribute("data-count")) || 0;
     var decimals = Number.parseInt(el.getAttribute("data-decimals") || "0", 10);
     if (reduceMotion || target === 0) { el.textContent = fmt(target, decimals); return; }
-    var start = null, duration = 900;
+    var start = null, duration = 400;
     function step(ts) {
       if (start === null) start = ts;
       var p = Math.min((ts - start) / duration, 1);
-      var eased = 1 - Math.pow(1 - p, 3);
+      var eased = p;  // linear count-up
       el.textContent = fmt(target * eased, decimals);
       if (p < 1) requestAnimationFrame(step);
     }
@@ -161,6 +146,14 @@
     }, true);
   });
 
+  // Backup schedule: the weekday only applies to a weekly schedule.
+  var bkFrequency = document.getElementById("bk-frequency"), bkWeekday = document.getElementById("bk-weekday");
+  if (bkFrequency && bkWeekday) {
+    var syncWeekday = function () { bkWeekday.disabled = bkFrequency.value !== "weekly"; };
+    bkFrequency.addEventListener("change", syncWeekday);
+    syncWeekday();
+  }
+
   // Overtime form: tell the user when the chosen date is one of their on-call days (detected server-side too).
   var otForm = document.getElementById("ot-form");
   if (otForm) {
@@ -185,14 +178,12 @@
 
   // Week switch: book / release every day of the rotation week shown in this month.
   function applyWeek(toggle) {
-    weekRows(toggle.getAttribute("data-week")).forEach(function (tr, i) {
+    weekRows(toggle.getAttribute("data-week")).forEach(function (tr) {
       var oc = tr.querySelector(".js-oc"), iv = tr.querySelector(".js-iv");
       if (oc.checked === toggle.checked) return;
-      setTimeout(function () {
-        oc.checked = toggle.checked;
-        if (!toggle.checked && iv) iv.checked = false;
-        recompute(tr);
-      }, reduceMotion ? 0 : i * 45);  // ripple the selection down the week
+      oc.checked = toggle.checked;
+      if (!toggle.checked && iv) iv.checked = false;
+      recompute(tr);
     });
   }
 

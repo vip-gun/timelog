@@ -40,6 +40,20 @@
       <span class="muted small">When off, employees no longer see the stipend, daily rates or totals on their own sheets and dashboard. Line managers (for the people below them) and administrators always see amounts. Days, interventions and overtime hours remain visible.</span></span>
   </label>
   </div>
+  <h2>On-call rotation</h2>
+  <div class="form-grid">
+    <label>The on-call week starts on
+      <select name="week_start">
+        {% for name in weekdays %}<option value="{{ loop.index0 }}" {% if week_start == loop.index0 %}selected{% endif %}>{{ name }}</option>{% endfor %}
+      </select></label>
+    <label>Handover time
+      <select name="handover">
+        {% for m in range(0, 1440, 30) %}{% set t = '%02d:%02d' % (m // 60, m % 60) %}<option value="{{ t }}" {% if handover == t %}selected{% endif %}>{{ t }}</option>{% endfor %}
+      </select></label>
+  </div>
+  <p class="help">The rotation runs from this day and time to the same day and time a week later (default: Friday 18:00, so a week is booked Friday to Thursday).
+    The week switch on the on-call sheet books those seven days; the handover time is shown to employees as information, days are always booked whole.
+    Days already booked are not changed.</p>
   <div class="actions"><button class="btn btn-primary">Save settings</button></div>
 </form>
 
@@ -125,10 +139,9 @@
     <button class="btn btn-ghost btn-sm">Reset to .env values</button>
   </form>
   {% endif %}
-</section>
 
-<section class="card" id="ldap-test">
-  <h2>Test connection</h2>
+<div id="ldap-test" class="ldap-test">
+  <h3>Test connection</h3>
   <p class="help">Uses the <strong>saved</strong> settings: connects, binds with the service account and, if a username is given, looks the user up with their groups and manager. No user password is needed.</p>
   <form method="post" action="/admin/settings/ldap/test#ldap-test" class="inline-form">
     <input type="hidden" name="csrf_token" value="{{ csrf }}">
@@ -159,5 +172,7 @@
   </div>
   {% endif %}
   {% endif %}
+</div>
 </section>
+
 {% endblock %}

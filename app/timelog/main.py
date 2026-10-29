@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
 
+from . import backup
 from .config import Settings, get_settings, set_settings
 from .db import Base, SessionLocal, init_engine
 from .routes import admin, approvals, auth, home, oncall, overtime, submission, team
@@ -34,6 +35,15 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
     Base.metadata.create_all(engine)
     with SessionLocal() as db:
         seed(db, s)
+
+    if s.backup_scheduler:
+        backup.encrypt_legacy(s.backup_dir, backup.passphrase_of(s))
+
+        def current_schedule() -> backup.Schedule:
+            with SessionLocal() as sdb:
+                return backup.load_schedule(sdb)
+
+        backup.start_scheduler(engine, s.backup_dir, current_schedule, backup.passphrase_of(s))
 
     app = FastAPI(title=s.app_name, docs_url=None, redoc_url=None, openapi_url=None)
 

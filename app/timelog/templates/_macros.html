@@ -1,5 +1,5 @@
 {% macro brand_mark() -%}
-<span class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg></span>
+<span class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="square"><rect x="4" y="4" width="16" height="16"/><path d="M12 8v4h3"/></svg></span>
 {%- endmacro %}
 
 {% macro status_badge(sheet) -%}
@@ -12,6 +12,7 @@
     <a class="btn btn-ghost btn-icon" href="{{ base }}/{{ p[0] }}/{{ p[1] }}{{ extra }}" aria-label="Previous month" title="{{ month_label(p[0], p[1]) }}">&larr;</a>
     <span class="current">{{ month_label(year, month) }}</span>
     <a class="btn btn-ghost btn-icon" href="{{ base }}/{{ n[0] }}/{{ n[1] }}{{ extra }}" aria-label="Next month" title="{{ month_label(n[0], n[1]) }}">&rarr;</a>
+    {% if (year, month) != (today.year, today.month) %}<a class="btn btn-ghost btn-sm" href="{{ base }}/{{ today.year }}/{{ today.month }}{{ extra }}" title="{{ month_label(today.year, today.month) }}">Current month</a>{% endif %}
   </div>
 {%- endmacro %}
 

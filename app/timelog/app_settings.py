@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from .config import Settings
 from .models import (
-    SETTING_DEFAULTS, SETTING_SHOW_AMOUNTS, SETTING_SIGNATURE_REQUIRED, SETTING_TIL_ENABLED, AppSetting, User,
+    SETTING_DEFAULTS, SETTING_ONCALL_HANDOVER, SETTING_ONCALL_WEEK_START, SETTING_SHOW_AMOUNTS, SETTING_SIGNATURE_REQUIRED, SETTING_TIL_ENABLED, AppSetting, User,
 )
 
 LDAP_PREFIX = "ldap."
@@ -70,6 +70,13 @@ def features(db: Session) -> Dict[str, bool]:
         "til": get_flag(db, SETTING_TIL_ENABLED),
         "signature": get_flag(db, SETTING_SIGNATURE_REQUIRED),
     }
+
+
+def oncall_week(db: Session, base: Settings):
+    """(weekday the rotation starts on, handover time HH:MM): Admin > Settings, else the ONCALL_WEEK_START env value."""
+    raw = get_setting(db, SETTING_ONCALL_WEEK_START)
+    day = int(raw) if raw.isdigit() and 0 <= int(raw) <= 6 else base.oncall_week_start
+    return day, get_setting(db, SETTING_ONCALL_HANDOVER)
 
 
 def can_see_amounts(db: Session, viewer: User, target: User) -> bool:

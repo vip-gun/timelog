@@ -4,7 +4,7 @@ from typing import Optional
 from fastapi import HTTPException, Request
 from sqlalchemy.orm import Session
 
-from ..access import can_decide, require_view_user
+from ..access import can_decide, require_view_user, visible_user_ids
 from ..app_settings import get_flag
 from ..calendar_utils import valid_month
 from .. import calc, workflow
@@ -91,3 +91,17 @@ def remembered_month(request: Request) -> tuple:
         pass
     today = dt.date.today()
     return today.year, today.month
+
+
+def conflicts_for_viewer(db: Session, viewer: User, sheet: Optional[Sheet]) -> dict:
+    """On-call conflicts of a sheet as shown to a manager/admin: {date: {"names": [...], "hidden": n}}.
+
+    Colleagues outside the viewer's scope are never named: they only count as "hidden"."""
+    if sheet is None or sheet.kind != KIND_ONCALL or sheet.user_id == viewer.id:
+        return {}
+    visible = visible_user_ids(db, viewer)
+    out = {}
+    for date, others in workflow.oncall_conflicts(db, sheet).items():
+        names = [f"{u.full_name} ({'approved' if status == APPROVED else 'submitted'})" for u, status in others if u.id in visible]
+        out[date] = {"names": names, "hidden": sum(1 for u, _ in others if u.id not in visible)}
+    return out

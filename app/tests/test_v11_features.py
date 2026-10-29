@@ -102,3 +102,69 @@ def test_months_are_synced_between_oncall_and_overtime(browser, users):
     assert alice.get("/overtime", follow_redirects=False).headers["location"] == "/overtime/2026/3"
     alice.get("/overtime/2026/5")  # manual change on one page moves both
     assert alice.get("/oncall", follow_redirects=False).headers["location"] == "/oncall/2026/5"
+
+
+def test_current_month_button(browser, users):
+    import datetime as dt
+    today = dt.date.today()
+    alice = browser("alice")
+    for kind in ("oncall", "overtime"):
+        assert "Current month" not in alice.get(f"/{kind}/{today.year}/{today.month}").text
+        page = alice.get(f"/{kind}/2025/3").text
+        assert f'href="/{kind}/{today.year}/{today.month}"' in page and "Current month" in page
+
+
+def test_admin_documentation_page(browser, users):
+    page = browser("admin").get("/admin/docs")
+    assert page.status_code == 200
+    for anchor in ('id="ssl"', 'id="ldap"', "openssl pkcs12", "certs/server.crt", "Test connection"):
+        assert anchor in page.text
+    assert "Documentation" in browser("admin").get("/admin/users").text  # in the admin sub-navigation
+    assert browser("alice").get("/admin/docs").status_code in (403, 404)
+
+
+def test_oncall_week_start_is_configurable(browser, db, users):
+    admin, alice = browser("admin"), browser("alice")
+    page = alice.get("/oncall/2026/8").text
+    assert "Friday 18:00" in page  # default
+    admin.post("/admin/settings", {"show_amounts": "1", "til_enabled": "1", "week_start": "0", "handover": "08:00"})
+    page = alice.get("/oncall/2026/8").text
+    assert "Monday 08:00" in page and "Monday to Sunday" in page
+    # the week switch now books Monday 2026-08-03 .. Sunday 2026-08-09
+    alice.post("/oncall/2026/8", {"wk_2026-08-03": "1", "action": "save"})
+    from timelog.models import OnCallDay
+    db.expire_all()
+    assert sorted(d.date.isoformat() for d in db.query(OnCallDay).all()) == [f"2026-08-0{i}" for i in range(3, 10)]
+    admin.post("/admin/settings", {"week_start": "9", "handover": "08:00"})  # invalid: ignored
+    assert "Monday 08:00" in alice.get("/oncall/2026/8").text
+
+
+def test_oncall_conflicts_highlighted_for_managers_only(browser, db, users):
+    alice, carol, mgr, head, bob = (browser(n) for n in ("alice", "carol", "manager", "head", "bob"))
+    # alice and carol both book 2026-08-10 and 11; bob (expert, same manager) books 2026-08-20 alone
+    alice.post("/oncall/2026/8", {"oc_2026-08-10": "1", "oc_2026-08-11": "1", "action": "submit"})
+    carol.post("/oncall/2026/8", {"oc_2026-08-11": "1", "oc_2026-08-12": "1", "action": "save"})
+    assert "conflict" not in mgr.get(f"/oncall/2026/8?user_id={users['alice'].id}").text.lower().replace("on-call conflict", "")
+    carol.post("/oncall/2026/8", {"oc_2026-08-11": "1", "oc_2026-08-12": "1", "action": "submit"})  # now both declared
+
+    page = mgr.get(f"/oncall/2026/8?user_id={users['alice'].id}").text
+    assert "On-call conflict" in page and "Carol" in page.title() and "11/08/2026" in page
+    assert page.count("⚠ conflict") == 1  # only the 11th overlaps, the 10th does not
+    assert "1 day(s) in conflict" in mgr.get("/approvals").text
+
+    # the employees themselves never see it
+    assert "On-call conflict" not in alice.get("/oncall/2026/8").text
+    assert "conflict" not in carol.get("/oncall/2026/8").text.lower().replace("on-call conflict", "")
+
+    # a manager above sees both (head sees alice's sheet and names carol: both are below head)
+    assert "Carol" in head.get(f"/oncall/2026/8?user_id={users['alice'].id}").text.title()
+
+
+def test_conflict_with_unseen_employee_is_anonymous(browser, db, users):
+    alice, dave, mgr = browser("alice"), browser("dave"), browser("manager")
+    alice.post("/oncall/2026/8", {"oc_2026-08-17": "1", "action": "submit"})
+    dave.post("/oncall/2026/8", {"oc_2026-08-17": "1", "action": "submit"})  # dave reports to head, not to manager
+    page = mgr.get(f"/oncall/2026/8?user_id={users['alice'].id}").text
+    assert "1 other employee outside your team" in page
+    banner = page.split("On-call conflict")[1].split("</ul>")[0]
+    assert "dave" not in banner.lower()  # an employee outside the manager's scope is never named

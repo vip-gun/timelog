@@ -1,4 +1,5 @@
 # TimeLog - on-call & overtime tracking.
+# Bind mounts use the :z option so they also work on SELinux hosts (RHEL); other hosts ignore it.
 # Only the `proxy` service publishes ports; `app` and `db` live on the internal network.
 name: timelog
 
@@ -34,9 +35,12 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://timelog:${POSTGRES_PASSWORD}@db:5432/timelog
       SESSION_COOKIE_SECURE: "true"
+      BACKUP_DIR: /backups
     volumes:
+      # Backups made from Admin > Backup (also copy them off this host).
+      - backups:/backups
       # Microsoft PKI CA chain used to validate the LDAPS certificate of the domain controllers.
-      - ./certs:/certs:ro
+      - ./certs:/certs:ro,z
     depends_on:
       db:
         condition: service_healthy
@@ -52,8 +56,8 @@ services:
       SERVER_NAME: ${SERVER_NAME:?set SERVER_NAME in .env}
       HTTPS_PORT_SUFFIX: ${HTTPS_PORT_SUFFIX:-}
     volumes:
-      - ./proxy/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
-      - ./certs:/etc/nginx/certs:ro
+      - ./proxy/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro,z
+      - ./certs:/etc/nginx/certs:ro,z
     depends_on:
       app:
         condition: service_healthy
@@ -61,6 +65,7 @@ services:
 
 volumes:
   db-data:
+  backups:
 
 networks:
   internal:

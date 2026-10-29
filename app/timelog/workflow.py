@@ -160,6 +160,25 @@ def oncall_dates(db: Session, user: User, start: dt.date, end: dt.date) -> Set[d
         Sheet.user_id == user.id, Sheet.kind == KIND_ONCALL, OnCallDay.date >= start, OnCallDay.date <= end)))
 
 
+def oncall_conflicts(db: Session, sheet: Sheet) -> Dict[dt.date, List[Tuple[User, str]]]:
+    """Days of an on-call sheet on which another employee is also on call (submitted or approved sheets).
+
+    Two employees cannot be on call at the same time; drafts do not count, they are not yet declarations."""
+    dates = [d.date for d in sheet.oncall_days]
+    if not dates:
+        return {}
+    rows = db.execute(
+        select(OnCallDay.date, Sheet.status, User)
+        .join(Sheet, OnCallDay.sheet_id == Sheet.id).join(User, Sheet.user_id == User.id)
+        .where(OnCallDay.date.in_(dates), Sheet.kind == KIND_ONCALL, Sheet.user_id != sheet.user_id,
+               Sheet.status.in_((SUBMITTED, APPROVED)))
+        .order_by(OnCallDay.date, User.last_name, User.first_name))
+    out: Dict[dt.date, List[Tuple[User, str]]] = {}
+    for date, status, user in rows:
+        out.setdefault(date, []).append((user, status))
+    return out
+
+
 def oncall_total(sheet: Sheet) -> Decimal:
     return sum((d.amount for d in sheet.oncall_days), Decimal(0))
 

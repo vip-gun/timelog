@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+{% block title %}Documentation{% endblock %}
+{% block content %}
+{% include "admin/_nav.html" %}
+<div class="page-head"><div><span class="eyebrow">Administration</span><h1>Documentation</h1></div></div>
+
+<nav class="subnav docs-toc" aria-label="Sections">
+  <a href="#overview">How it works</a>
+  <a href="#roles">Roles &amp; visibility</a>
+  <a href="#oncall">On-call</a>
+  <a href="#overtime">Overtime</a>
+  <a href="#workflow">Submission &amp; approval</a>
+  <a href="#export">Finance export</a>
+  <a href="#ssl">SSL / HTTPS</a>
+  <a href="#ldap">LDAP / Active Directory</a>
+  <a href="#ops">Operations</a>
+</nav>
+
+<section class="card docs" id="overview">
+  <h2>How the application works</h2>
+  <p>Timelog is used to declare <strong>on-call duty</strong> and <strong>overtime</strong>.
+    Employees declare per month, the line manager validates, and Finance receives one aggregated monthly export.</p>
+  <ol>
+    <li>The employee fills a <em>draft</em> for the month: on-call days and, for normal employees, overtime entries. The two sheets are separate drafts.</li>
+    <li>One <strong>Submit</strong> sends every draft of that month to the line manager together (with a comment and, if enabled, a signature).</li>
+    <li>The manager approves, or rejects with a comment. A rejected sheet is edited and submitted again.</li>
+    <li>Approved sheets appear in the monthly <strong>Finance export</strong> of the manager's team.</li>
+  </ol>
+  <p>The month shown on the On-call and Overtime pages is kept in sync until you change it. The <em>Current month</em> button jumps back to today's month.</p>
+</section>
+
+<section class="card docs" id="roles">
+  <h2>Roles &amp; visibility</h2>
+  <table class="table">
+    <thead><tr><th scope="col">Role</th><th scope="col">What they can do</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">Employee</th><td>Declares on-call and overtime, submits, withdraws a submitted sheet, sees only their own data.</td></tr>
+      <tr><th scope="row">Expert</th><td>On-call only. An intervention on an on-call day doubles that day's rate. Experts cannot file overtime (refused server-side).</td></tr>
+      <tr><th scope="row">Line manager</th><td>Anyone with direct reports. Approves or rejects the sheets of direct reports, sees everyone below them in the hierarchy and exports their team.</td></tr>
+      <tr><th scope="row">Administrator</th><td>Manages users, grades, holidays, settings and sees the audit log. Can approve any sheet and reopen an approved sheet (audited).</td></tr>
+    </tbody>
+  </table>
+  <p>Colleagues never see each other's declarations. Opening a record you are not allowed to see answers <em>404</em>, so its existence is not disclosed. The line manager comes from the directory (AD <code>manager</code> attribute) at each login, unless you lock it in <a href="/admin/users">Users</a>.</p>
+</section>
+
+<section class="card docs" id="oncall">
+  <h2>On-call</h2>
+  <ul>
+    <li>Cover rotates weekly. The rotation starts on <strong>{{ week_start_name }} at {{ week_handover }}</strong> and ends a week later (Admin › <a href="/admin/settings">Settings</a>, default Friday 18:00); the days {{ week_start_name }} to {{ week_end_name }} are booked. The week switch books all seven days; a week straddling two months also books the other month's days on that month's sheet.</li>
+    <li>Each day has exactly one type: <strong>legal holiday</strong> wins over Saturday / Sunday, which win over weekday. The daily stipend comes from the employee's <a href="/admin/grades">grade</a> (rates per weekday, Saturday, Sunday and holiday).</li>
+    <li><strong>Experts</strong> record interventions on the grid (incident number, comment): the daily rate is doubled. <strong>Normal employees</strong> record interventions as overtime; entries on a booked on-call day are recognised automatically.</li>
+    <li><strong>Conflicts</strong>: two employees cannot be on call at the same time. Managers and administrators see a red banner and highlighted days on an on-call sheet, and a tag on the Approvals list, when another employee has the same day on a submitted or approved sheet. Employees outside the manager's team are not named. Drafts are not counted, and approval is not blocked: the manager decides.</li>
+    <li>Rates and day types are <em>snapshotted at submission</em>: later rate changes never alter a submitted or approved sheet.</li>
+  </ul>
+</section>
+
+<section class="card docs" id="overtime">
+  <h2>Overtime</h2>
+  <ul>
+    <li>An entry is a date with <strong>from / to times chosen in {{ settings.overtime_step_minutes }}-minute steps</strong>. Hours and night hours ({{ '%02d:%02d' % (settings.night_start // 60, settings.night_start % 60) }}–{{ '%02d:%02d' % (settings.night_end // 60, settings.night_end % 60) }}) are computed. An entry past midnight is split into one entry per day; entries of one person may not overlap; future dates are refused.</li>
+    <li>Entries can be logged up to <strong>{{ settings.overtime_lookback_months }} months back</strong>. They go to the sheet of their own month. If that month is already approved a <strong>supplementary sheet</strong> (late claim) is opened.</li>
+    <li>Weekend and holiday overtime must be on an on-call day (detected automatically) or ticked <em>pre-approved by the manager</em>; otherwise the sheet cannot be submitted.</li>
+    <li>Compensation is <strong>paid</strong> or <strong>time in lieu</strong> (TIL) when the TIL switch is on in <a href="/admin/settings">Settings</a>. Paid hours map to payroll codes HL100 / HL101 (all), HL111 (night), HL130 (Sunday), HL121 (legal holiday).</li>
+  </ul>
+</section>
+
+<section class="card docs" id="workflow">
+  <h2>Submission &amp; approval</h2>
+<pre><code>draft ──submit──▶ submitted ──approve──▶ approved
+  ▲                 │  └──reject(comment)──▶ rejected ──(edit)──▶ submit again
+  └──withdraw───────┘
+approved ──reopen (admin, audited)──▶ draft</code></pre>
+  <ul>
+    <li><strong>One submission per month</strong> covers the on-call and overtime drafts. If any sheet is refused (for instance unjustified weekend overtime) nothing is submitted.</li>
+    <li>Only the <strong>direct line manager</strong> or an administrator approves; nobody approves their own sheet. Every transition is written to the <a href="/admin/audit">audit log</a>.</li>
+    <li><strong>Signature</strong> (Settings): employees draw, or upload a picture of, their signature and confirm a statement. It is stored with a SHA-256 fingerprint of the sheet; managers see a check that the content is unchanged since signing. This is a simple electronic signature, not a qualified one.</li>
+    <li><strong>Payroll period</strong>: sheets approved up to day {{ settings.payroll_cutoff_day }} of the following month are paid with their work month; later approvals go to the next open payroll period and are shown as <em>late claims</em> (<code>PAYROLL_CUTOFF_DAY</code>).</li>
+  </ul>
+</section>
+
+<section class="card docs" id="export">
+  <h2>Finance export</h2>
+  <p>Managers (their team) and administrators (everyone, optional team filter) download an <code>.xlsx</code> export per payroll period under <a href="/team">Team &amp; export</a>. Tabs: <em>Summary</em> (status of every person, so missing or pending sheets are visible), <em>On-Call</em>, <em>On-Call Grid</em>, <em>Overtime Payroll</em> (hours by day type, night hours, payroll codes, TIL), and the line-by-line detail tabs.</p>
+</section>
+
+<section class="card docs" id="ssl">
+  <h2>SSL / HTTPS configuration</h2>
+  <p>TLS is terminated by the <code>proxy</code> container (nginx). The application container is not published; only nginx listens
+    (HTTP redirects to HTTPS, TLS 1.2 / 1.3, HSTS). The certificate is configured with <strong>files on the server</strong>, not from this interface.</p>
+  <table class="table">
+    <thead><tr><th scope="col">File (in <code>certs/</code>)</th><th scope="col">Content</th></tr></thead>
+    <tbody>
+      <tr><th scope="row"><code>server.crt</code></th><td>Server certificate <strong>followed by</strong> the intermediate CA chain, PEM, server certificate first.</td></tr>
+      <tr><th scope="row"><code>server.key</code></th><td>Private key, PEM, <strong>unencrypted</strong>, <code>chmod 600</code>.</td></tr>
+      <tr><th scope="row"><code>ldap-ca.pem</code></th><td>Root (and issuing) CA used to validate the domain controllers (LDAPS). Not related to the web certificate.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Option 1: you receive a PFX file (.pfx / .p12) from the PKI</h3>
+  <p><strong>Offline package:</strong> run <code>./convert-pfx.sh server.pfx</code> (Linux) or <code>.\convert-pfx.ps1 server.pfx</code> (Windows) from the installation folder. It asks for the password, writes <code>certs/server.crt</code> (certificate then chain) and <code>certs/server.key</code> using the application image, and shows the names and expiry; then <code>docker compose restart proxy</code>. No openssl is needed. With OpenSSL available, the manual commands are:</p>
+  <p>The PKI usually generates the key for you and hands over a password-protected PFX containing the key, the certificate and the chain. Convert it with OpenSSL on a trusted machine:</p>
+<pre><code># 1. private key (unencrypted PEM)
+openssl pkcs12 -in server.pfx -nocerts -nodes -out certs/server.key
+# 2. server certificate, then the chain
+openssl pkcs12 -in server.pfx -clcerts -nokeys -out server-leaf.pem
+openssl pkcs12 -in server.pfx -cacerts -nokeys -out chain.pem
+cat server-leaf.pem chain.pem &gt; certs/server.crt
+chmod 600 certs/server.key</code></pre>
+  <p>OpenSSL 3 refuses PFX files protected with old algorithms (error <code>unsupported</code>): add <code>-legacy</code> to each <code>openssl pkcs12</code> command.
+    <code>openssl pkcs12</code> prints "Bag Attributes" headers before each PEM block; they are harmless for nginx, but you can strip them with <code>openssl x509 -in server-leaf.pem -out server-leaf.pem</code>.
+    Delete the PFX and the temporary files afterwards: they contain the private key.</p>
+
+  <h3>Option 2: you generate the key yourself (recommended)</h3>
+  <p>The key never leaves the server. Create a key and a CSR, submit it to AD CS and assemble the chain:</p>
+<pre><code>scripts/make-csr.sh timelog.corp.example.lu [other-dns-name ...]     # certs/server.key + certs/server.csr
+certreq -submit -attrib "CertificateTemplate:WebServer" server.csr server.cer   # on a domain-joined Windows host
+openssl x509 -inform DER -in server.cer -out server.pem                          # skip if already PEM
+cat server.pem issuing-ca.pem &gt; certs/server.crt</code></pre>
+
+  <h3>Check, apply and verify</h3>
+<pre><code># the key and the certificate must match: both lines print the same hash
+openssl x509 -in certs/server.crt -noout -pubkey | openssl sha256
+openssl pkey -in certs/server.key -pubout | openssl sha256
+# subject, alternative names and expiry
+openssl x509 -in certs/server.crt -noout -subject -ext subjectAltName -enddate
+# apply
+docker compose restart proxy
+# what clients receive
+openssl s_client -connect timelog.corp.example.lu:443 -servername timelog.corp.example.lu &lt; /dev/null | openssl x509 -noout -dates -issuer</code></pre>
+  <ul>
+    <li>The certificate's <strong>SAN</strong> must contain the host name users type (<code>SERVER_NAME</code> in <code>.env</code>).</li>
+    <li>Clients trust the certificate through the domain's root CA, usually distributed by group policy. If browsers warn, the chain in <code>server.crt</code> or the client trust store is the cause.</li>
+    <li>If HTTPS is not published on port 443, set <code>HTTPS_PORT</code> and <code>HTTPS_PORT_SUFFIX=:&lt;port&gt;</code> so the HTTP to HTTPS redirect keeps the port.</li>
+    <li>Renew before the expiry date: repeat the steps and restart the proxy. Short interruption only; no data is affected.</li>
+    <li>Development: <code>scripts/make-selfsigned.sh timelog.local</code> creates a self-signed certificate.</li>
+  </ul>
+</section>
+
+<section class="card docs" id="ldap">
+  <h2>LDAP / Active Directory configuration</h2>
+  <p>Authentication uses the directory for everyone who has no local account. Local accounts are checked first, so a local administrator can always sign in if the directory settings are wrong.</p>
+
+  <h3>Where to configure</h3>
+  <ul>
+    <li><strong>In this interface</strong>: <a href="/admin/settings#ldap">Admin › Settings › LDAP</a>. Values saved there are stored in the database and <em>override</em> the <code>LDAP_*</code> variables of <code>.env</code> (fields marked "custom"). <em>Reset to .env values</em> removes them.</li>
+    <li><strong>In <code>.env</code></strong>: <code>LDAP_ENABLED=true</code> and the <code>LDAP_*</code> variables (see <code>.env.example</code>), then <code>docker compose up -d</code>.</li>
+  </ul>
+
+  <h3>Fields</h3>
+  <table class="table">
+    <thead><tr><th scope="col">Setting</th><th scope="col">Meaning / example</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">Server URL</th><td><code>ldaps://dc01.corp.example.lu:636</code>, or <code>ldap://dc01:389</code> with StartTLS. Use LDAPS or StartTLS: credentials must not travel in clear text.</td></tr>
+      <tr><th scope="row">CA certificate</th><td>Paste the PKI root (and issuing) CA as PEM, or provide <code>certs/ldap-ca.pem</code> (path <code>/certs/ldap-ca.pem</code> in the container). Keep "Verify the server certificate" on.</td></tr>
+      <tr><th scope="row">Bind DN / password</th><td>A read-only <strong>service account</strong> used to search for users. The password is encrypted with a key derived from <code>SECRET_KEY</code> and never displayed; rotating <code>SECRET_KEY</code> means re-entering it.</td></tr>
+      <tr><th scope="row">User search base / filter</th><td>For example <code>OU=Users,DC=corp,DC=example,DC=lu</code> and <code>(sAMAccountName={username})</code>. The filter must contain <code>{username}</code>.</td></tr>
+      <tr><th scope="row">Attribute mapping</th><td>Defaults suit AD: <code>sAMAccountName</code>, <code>givenName</code>, <code>sn</code>, <code>displayName</code>, <code>mail</code>, <code>employeeID</code>, <code>department</code> (team), <code>manager</code>.</td></tr>
+      <tr><th scope="row">Groups</th><td>DNs of the groups for <em>Allowed to sign in</em>, <em>Administrators</em> and <em>Expert employees</em>. Nested membership is resolved by AD. If a group is empty, that flag is managed by hand in <a href="/admin/users">Users</a>.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>How login works</h3>
+  <ol>
+    <li>The service account searches for the user; the user's own password is then checked with a bind. Empty passwords are refused.</li>
+    <li>On each login the user is created or updated: names, e-mail, employee ID, team and the <strong>line manager</strong> (the manager entry is created too, so the hierarchy exists before they log in), unless the manager is locked.</li>
+    <li>Group membership sets the administrator / Expert flags and decides who may log in.</li>
+  </ol>
+
+  <h3>Test and go live</h3>
+  <ol>
+    <li>Save the settings, then use <a href="/admin/settings#ldap-test">Test connection</a>: it connects, binds with the service account and, if you give a username, shows that person's attributes, groups and manager. No user password is needed.</li>
+    <li>Sign in with a directory account in a private window.</li>
+    <li>When it works, set <code>LOCAL_LOGIN_ADMIN_ONLY=true</code> so that only local administrators can still use local passwords (keep one local break-glass administrator).</li>
+  </ol>
+  <p class="help">Typical failures: <em>cannot connect</em> (firewall, port, name resolution), <em>certificate verify failed</em> (missing CA or wrong host name in the URL), <em>invalid credentials</em> (bind DN or password), <em>no entry</em> (search base or filter).</p>
+</section>
+
+<section class="card docs" id="ops">
+  <h2>Operations</h2>
+  <ul>
+    <li><strong>Backup</strong>: <a href="/admin/backup">Admin › Backup</a> creates, downloads, uploads, deletes and <em>restores</em> backups, and sets the <strong>schedule</strong> (daily or weekly, time in UTC, number of automatic backups to keep). Every backup is <strong>encrypted</strong> (AES-256-GCM) with a key derived from <code>BACKUP_PASSPHRASE</code>, or from <code>SECRET_KEY</code> when that is not set: <strong>store the passphrase safely and separately</strong>, a backup cannot be read without it. Files live in the <code>backups</code> Docker volume: download or copy them off the host regularly, a backup on the same disk does not protect against losing the server. A restore replaces the whole database and writes a safety copy first. <code>scripts/backup-db.sh</code> (a native PostgreSQL dump, not encrypted by the app) remains available for cron.</li>
+    <li><strong>Logs</strong>: <code>docker compose logs -f app proxy</code>. <strong>Health</strong>: <code>GET /healthz</code>.</li>
+    <li><strong>Update</strong>: <code>scripts/build.sh</code> (or load the new image with <code>docker load</code>), then <code>docker compose up -d</code>. The footer shows the running version and build time (build {{ build.version }}).</li>
+    <li><strong>Secrets</strong> live in <code>.env</code> (git-ignored): <code>SECRET_KEY</code>, <code>BOOTSTRAP_ADMIN_PASSWORD</code>, database password. The app refuses to start with the example placeholders.</li>
+    <li><strong>Settings</strong> in the <a href="/admin/settings">Settings</a> page switch features on or off: time in lieu, signature on submission, amounts visible to employees.</li>
+  </ul>
+</section>
+{% endblock %}

@@ -49,6 +49,11 @@ class Settings:
     # On-call rotation week start (0=Monday ... 4=Friday): weeks run Friday -> Thursday by default
     oncall_week_start: int = 4
 
+    # Backups (Admin > Backup). The schedule itself is edited in the admin interface.
+    backup_dir: str = "./backups"
+    backup_passphrase: str = ""   # encryption passphrase; empty = derived from SECRET_KEY
+    backup_scheduler: bool = False  # run the scheduler thread (BACKUP_SCHEDULER, on by default in the container)
+
     # Local accounts
     local_login_enabled: bool = True
     local_login_admin_only: bool = False
@@ -111,6 +116,9 @@ class Settings:
             overtime_lookback_months=_int("OVERTIME_LOOKBACK_MONTHS", 12),
             payroll_cutoff_day=_int("PAYROLL_CUTOFF_DAY", 10),
             oncall_week_start=_weekday("ONCALL_WEEK_START", 4),
+            backup_dir=_str("BACKUP_DIR", "./backups"),
+            backup_passphrase=os.environ.get("BACKUP_PASSPHRASE", ""),
+            backup_scheduler=_bool("BACKUP_SCHEDULER", True),
             local_login_enabled=_bool("LOCAL_LOGIN_ENABLED", True),
             local_login_admin_only=_bool("LOCAL_LOGIN_ADMIN_ONLY", False),
             bootstrap_admin_username=_str("BOOTSTRAP_ADMIN_USERNAME"),

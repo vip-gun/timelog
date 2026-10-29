@@ -71,12 +71,20 @@ The original workbooks are kept locally in the top-level `templates/` folder, wh
   **Only normal employees can file overtime** (enforced server-side, 403 for experts).
 - **Grades**: on-call daily rates are configurable **per grade** (`grades` table: rate W/Sat/Sun/H).
   Seeded default grade `STD` = 45/70/70/90. Each user has a grade (falls back to default grade).
-- **Rotation weeks**: cover is normally assigned per week, **Friday → Thursday** (`ONCALL_WEEK_START`,
-  default `fri`). The on-call grid groups days by rotation week with a **week switch** (`wk_<start date>`)
+- **Rotation weeks**: cover is normally assigned per week, **Friday → Thursday** by default. The start weekday and a
+  handover time (default Friday 18:00, informational: days are booked whole) are editable in Admin › Settings
+  (`app_settings` keys `oncall_week_start`, `oncall_handover`; the `ONCALL_WEEK_START` env value is the fallback; existing
+  bookings are not changed). The on-call grid groups days by rotation week with a **week switch** (`wk_<start date>`)
   that books all 7 days. A week straddling two months books the other month's days on that month's sheet
   (`workflow.add_oncall_days`, keeps existing days); if that sheet is submitted/approved those days are
   skipped with a warning. The switch shows "on" when all 7 days are booked across both months; client JS
   never switches it on automatically for a spilling week (would silently book the other month).
+- **On-call conflicts** (v1.3.0): two employees cannot be on call at the same time. For managers/admins (never for
+  the employee), an on-call sheet is flagged where another employee has the same day on a **submitted or approved** sheet
+  (`workflow.oncall_conflicts`, drafts do not count): red banner + highlighted rows (names, status) on the on-call sheet,
+  and a "N day(s) in conflict" tag on the Approvals list. Colleagues outside the viewer's scope are **not named**
+  ("1 other employee outside your team"), to respect the visibility rule. Highlight only: approval is not blocked. The
+  check is organisation-wide (not per team); restrict it per team if rotations are per team.
 - **On-call amount per day** = `rate[grade][day_type] × (2 if expert and intervention else 1)`.
 - **Who records intervention details where** (decision 2026-10-28):
   - *Experts*: on the on-call grid (Intervention checkbox → double rate, Incident #, Comment).
@@ -230,11 +238,12 @@ approved ──reopen (admin only, audited, latest sheet of the month only)─�
 
 - Schema created with `create_all` at startup + idempotent seeding (grades, holidays, TIL rules,
   bootstrap admin). *Decision:* no Alembic yet; add it before the first schema change in production.
-- Code is kept **Python 3.9-compatible** (`Optional[...]`, no `match`) so tests run on the dev Mac;
-  containers use 3.12.
+- Python **3.12** everywhere (containers and the dev venv: `brew install python@3.12`, then
+  `/opt/homebrew/bin/python3.12 -m venv app/.venv`). Since v1.1.1 the old "keep it 3.9-compatible" rule no longer
+  applies (existing `Optional[...]` style is kept for consistency). `requirements.txt` pins direct **and transitive**
+  dependencies; refresh them deliberately (install, `pip check`, tests, then the Dependency-Track scan).
 - Air-gapped deployment: build images where a registry/PyPI mirror is reachable
-  (`PIP_INDEX_URL` build arg for an internal mirror), then `scripts/offline-bundle.sh`
-  (`docker save`) and `docker load` on the target.
+  (`PIP_INDEX_URL` build arg for an internal mirror), then `scripts/make-offline-package.sh` (§8.4).
 
 ### 6.1 Design system
 Colours copied from the Utmost website's compiled Tailwind theme
@@ -262,8 +271,12 @@ lengths don't shift it sideways, and the main fonts are `<link rel=preload>`ed t
 Static assets are cache-busted with `?v={{ build.asset_tag }}`.
 The browser tab title and the nav labels are title-cased (first letter of every word, `titlecase` Jinja filter in
 `web.py`: "Timelog - Overtime Aug 2026", "Sign In", "Team & Export", "Sign Out").
-Animations: staggered rows/cards (`.stagger`, `.table.animate` + `--i` set by JS), toasts, button ripple,
-count-up stat tiles, amount "bump" in the on-call grid; all disabled by `prefers-reduced-motion`.
+**Industrial look** (v1.1.2, replaces the earlier rounded/"bubbly" style): square corners (2 px radius token), flat
+surfaces with hard 1 px borders, no blur/gradients/glows, hard offset shadow only on toasts, faint engineering grid
+background, solid aubergine header with a gold bottom rule, uppercase mono-ish buttons, gold top rule on stat tiles.
+Motion is short and linear (<= 0.2 s fade-in of rows/cards, toasts slide 16 px, brief colour flash when an amount
+changes, 0.4 s linear count-up); no ripples, floating orbs, pulses, wiggles, lifts or scaling. All disabled by
+`prefers-reduced-motion`. Favicon / brand mark: aubergine square, gold base bar, white square clock face.
 
 Frontend framework decision (2026-10-28): **stay server-rendered** (no React/Next.js). Reasons: the UI is
 forms + tables with light interactivity; Next.js would add a Node runtime/container, an npm supply chain to
@@ -274,6 +287,9 @@ updates are wanted: vendor **htmx** (single static JS file, no build).
 JS sets CSS custom properties through CSSOM (allowed by CSP); templates contain no inline `style`/`<script>`.
 
 ### HTTPS / Microsoft PKI
+- **Decision 2026-10-29: the TLS certificate stays file-based** (`certs/server.crt` + `server.key`, then restart the proxy).
+  Uploading a PFX from the admin UI was considered and dropped (it would put the TLS private key in an app-writable
+  volume and need a way to reload nginx). Admin › Documentation explains the PFX → PEM conversion with OpenSSL.
 - nginx terminates TLS with `certs/server.crt` (server cert **+ intermediate chain**, PEM) and
   `certs/server.key`. `scripts/make-csr.sh` generates key + CSR with SAN; submit to AD CS
   (`certreq -submit -attrib "CertificateTemplate:WebServer"`), convert to PEM, concatenate chain.
@@ -286,7 +302,7 @@ JS sets CSS custom properties through CSSOM (allowed by CSP); templates contain 
 `timelog/__init__.py:__version__` (semver, bump on each release) + build timestamp/commit shown in the footer
 of every page (and the login page) and returned by `/healthz` (`ok <version> <timestamp> [commit]`).
 The Dockerfile writes `timelog/BUILD_TIMESTAMP` (build arg, defaulting to `date -u` at build) and
-`timelog/BUILD_COMMIT`; `scripts/build.sh` / `offline-bundle.sh` pass them. Env vars of the same names
+`timelog/BUILD_COMMIT`; `scripts/build.sh` / `make-offline-package.sh` pass them. Env vars of the same names
 override. Without them the footer says "dev build, started <server start time>" (`version.py`).
 
 ## 7. Repository layout
@@ -314,7 +330,8 @@ app/timelog/             Python package
   templates/, static/
 app/tests/               pytest (SQLite)
 proxy/nginx.conf.template
-scripts/                 certificate + offline bundle helpers
+scripts/                 certificate, backup, build and offline-package helpers
+deploy/                  files shipped in the offline package (install.sh, README-OFFLINE.md)
 certs/                   (git-ignored) server.crt / server.key / ldap-ca.pem
 ```
 
@@ -368,7 +385,69 @@ docker compose exec app python -m timelog.demo   # optional demo users (prints a
   `{% if %}` blocks inside an HTML start tag (breaks the HTML parser → render the attribute unconditionally),
   JSON in attributes via `|tojson` inside **single quotes**, no `autofocus`.
 
+## 8.3 Dependency scanning (Dependency-Track)
+- Local OWASP Dependency-Track in the sibling folder `../dependency-track/` (UI :8081, API :8082, credentials in its
+  `.local.env`). Run `../dependency-track/scan.sh .` from the repo root: SBOM of `app/requirements.txt` (resolved,
+  incl. transitive), upload, findings. OSV (PyPI) mirror enabled. Details in that folder's README.
+- First scan 2026-10-29 (v1.1.0): 1 critical, 13 high, 18 medium, 6 low (deduplicated), all in dependencies
+  (starlette 0.41, python-multipart 0.0.19, cryptography 44, jinja2 3.1.4, anyio 4.12). Fixed in v1.1.1 by moving to
+  Python 3.12 and upgrading/pinning (starlette 1.10, fastapi 0.162, python-multipart 0.0.32, cryptography 50.0.2,
+  jinja2 3.1.6, anyio 4.15.1; SQLAlchemy kept on 2.0.x). Re-scan of v1.1.1: **0 findings** in Dependency-Track (the 1.1.0 project still shows the old 73 raw findings as control), SonarQube 0 issues / 0 hotspots, gate passed.
+
+## 8.4 Offline deployment package
+- **Targets** (decision 2026-10-29): the application runs in Docker containers on **RHEL 9** (Docker Engine, SELinux enforcing
+  supported through `:z` on every bind mount in `docker-compose.yml`) or **Windows Server 2022+ running Linux containers**
+  (Docker Engine in WSL 2 or Docker Desktop; Windows-native containers are not supported). Both are built from the same
+  linux images.
+- `scripts/make-offline-package.sh` (connected machine) builds `dist/timelog-<version>-offline-<target>-<arch>.zip` + `.sha256`.
+  `TARGET=rhel9` (default) or `windows`; `PLATFORM` (default `linux/amd64`) is the **server's** architecture, built with
+  `docker buildx --platform`; `docker save --platform` + a python check of every saved image's architecture (an earlier version
+  shipped arm64 nginx/postgres in an "amd64" package; the check now aborts). Contents: images tarball (app, `postgres:16-alpine`,
+  `nginx:1.27-alpine`), `docker-compose.yml` (unchanged: `build:` is ignored with `--no-build`), `.env.example`, `proxy/`,
+  `certs/README.md`, `docs/`, installer, `convert-pfx.*`, `README-OFFLINE.md` (from `deploy/README-OFFLINE-<target>.md`),
+  `MANIFEST.txt`, `CHECKSUMS.sha256` (verified by the installer). RHEL: `docker-rpms/` (docker-ce, cli, containerd.io, compose and
+  buildx plugins + missing dependencies, resolved in an `almalinux:9` container from Docker's RHEL repo; `INCLUDE_DOCKER_RPMS=0`
+  to skip). Windows: Docker is a documented prerequisite (not bundled).
+- `deploy/install.sh` (RHEL) / `deploy/install.ps1` (Windows): verify checksums, `docker load`, create `.env` from the template with
+  **generated** `SECRET_KEY`, `POSTGRES_PASSWORD`, bootstrap admin password and `BACKUP_PASSPHRASE` (first install needs
+  `--server-name`; `.env` mode 600 / ACL Administrators+SYSTEM), temporary self-signed certificate if none, firewall
+  (`--open-firewall` / `-OpenFirewall`), `docker compose up -d --no-build --pull never`, wait for healthy. `--upgrade` keeps
+  `.env`/volumes and only moves `TIMELOG_VERSION`. RHEL only: `--install-docker` installs `docker-rpms/` with
+  `dnf install --disablerepo='*'`.
+- **No openssl on the target**: `timelog/certtool.py` (cryptography) runs inside the app image: `selfsigned <fqdn> <outdir>` and
+  `pfx2pem <file.pfx> <outdir>` (server cert first, then chain; unencrypted key; password from env or prompt, never argv).
+  Wrapped by `deploy/convert-pfx.sh` / `.ps1`. Tests: `app/tests/test_certtool.py`.
+- README section "Offline (air-gapped) deployment" is the operator documentation; keep it and the two
+  `deploy/README-OFFLINE-*.md` in step with the scripts. Releasing: bump `__version__`, run the tests, build the package(s).
+- Not verified on real targets: a RHEL 9 host with SELinux enforcing and the bundled Docker RPMs (the `almalinux:9` resolution may
+  differ slightly from a minimal RHEL 9), and any Windows Server (`install.ps1` is untested; no PowerShell/Windows here).
+
 ## 9. Status (2026-10-28)
+- 2026-10-29 (**v1.4.0**): offline package per target (RHEL 9 / Windows Server, §8.4), `certtool` (self-signed, PFX to PEM),
+  SELinux-ready compose mounts. Replaces the first single-target package of v1.3.1.
+- 2026-10-29 (**v1.3.1**): offline deployment package (`scripts/make-offline-package.sh`, `deploy/`), replaces
+  `scripts/offline-bundle.sh`. Tested: package built, unzipped in an empty folder, installed (generated secrets, self-signed
+  certificate, HTTPS + redirect on custom ports), upgraded in place with data kept, removed.
+- 2026-10-29 (**v1.3.0**): admin-configurable on-call week start + handover time, on-call conflict highlighting for
+  managers, backup schedule + encryption (v1.2.1), docs without spreadsheet/initial-context wording.
+- 2026-10-29 (**v1.2.0**): **Admin › Backup** (`backup.py`, `routes/admin.py`, `admin/backup.html`). Logical backup =
+  gzip JSON of every table of `Base.metadata` (database independent, one consistent snapshot: REPEATABLE READ on
+  PostgreSQL), **encrypted with AES-256-GCM**: file `MAGIC "TLBK" | version | salt(16) | nonce(12) | ciphertext+tag`, key =
+  PBKDF2-HMAC-SHA256(600k) of `BACKUP_PASSPHRASE` (else `"timelog-backup:"+SECRET_KEY`), header authenticated; files
+  `timelog-YYYYmmdd-HHMMSS[-auto|-pre|-uploaded].tlbk` (strict name regex, no path input, unique per second), mode 600, in
+  `BACKUP_DIR` (`/backups` volume, owned by the app user via the Dockerfile). Unencrypted v1.2.0 `.json.gz` files are
+  encrypted at startup. Create, download, upload (decrypted + validated, optional "passphrase of that file" so a backup from
+  another server is re-encrypted with the local key; unencrypted uploads refused), delete, **restore** (typed `RESTORE`,
+  "pre-restore" safety copy, one transaction, self-referencing FKs linked after insertion, PostgreSQL sequences reset,
+  session cleared). **Schedule** (admin UI, stored in `app_settings` keys `backup.*`): on/off, daily or weekly (+ weekday),
+  time in 30-minute steps (UTC), number of automatic backups kept (1-365; manual/uploaded/pre-restore never pruned). The
+  scheduler thread (`BACKUP_SCHEDULER`, on in containers, off in code defaults/tests) re-reads the schedule each minute; a
+  save does not trigger a catch-up run of the slot already passed (`since`). Everything is audited. Tests pass on
+  SQLite and PostgreSQL 16. `scripts/backup-db.sh` (pg_dump, unencrypted) stays as an alternative.
+- 2026-10-29 (**v1.1.3**): Admin › Documentation page (`/admin/docs`, `templates/admin/docs.html`: how the app works,
+  SSL/HTTPS incl. PFX conversion, LDAP, operations); "Current month" button on the month selector. Keep the page in
+  step with the rules in this file.
+- 2026-10-29 (**v1.1.1**): dependency upgrade on Python 3.12 (see §8.3), transitive dependencies pinned. 68 tests green.
 - 2026-10-29 (**v1.1.0**): title case of tab title / nav, signature picture upload + saved signature, 30-minute
   time dropdowns, single month submission for on-call + overtime (`routes/submission.py`). New table
   `saved_signatures`. Tests: `app/tests/test_v11_features.py`.
@@ -391,8 +470,9 @@ docker compose exec app python -m timelog.demo   # optional demo users (prints a
   when HTTPS is not published on 443); login and every page over HTTPS; the full pytest suite against
   PostgreSQL 16 (`TEST_DATABASE_URL=postgresql+psycopg://… pytest`; each test starts from an empty schema).
 - **Not yet verified**: LDAP against a real Active Directory (only a fake in-memory directory in tests),
-  SMTP notifications, a certificate issued by the Microsoft PKI, and the air-gapped bundle script
-  (`scripts/offline-bundle.sh`). Validate these on the target environment.
+  SMTP notifications and a certificate issued by the Microsoft PKI. Validate these on the target environment.
+  The offline package (§8.4) was built and installed from a clean folder, with no repository and no registry, on a
+  Docker host (RHEL 9 amd64 package under emulation); a real RHEL 9 / Windows Server has not been tried.
 - Local run of the stack used HTTP 8080 / HTTPS 8443, `SERVER_NAME=localhost`, the self-signed
   development certificate, and a generated `.env` (git-ignored, mode 600).
 - Implementation notes: app factory `timelog.main:create_app` (run with `uvicorn --factory`);

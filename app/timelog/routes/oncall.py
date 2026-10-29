@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import workflow
-from ..app_settings import can_see_amounts
+from ..app_settings import can_see_amounts, oncall_week
 from ..calendar_utils import (
     day_type, holiday_names, month_bounds, month_days, month_label, rotation_week, rotation_week_start,
 )
@@ -16,7 +16,7 @@ from ..db import get_db
 from ..models import KIND_ONCALL, KIND_OVERTIME, OvertimeEntry, Sheet, User
 from ..security import current_user, flash, verify_csrf
 from ..web import redirect, render
-from .common import check_month, remember_month, remembered_month, resolve_target, sheet_permissions, signature_from_form, submission_context
+from .common import check_month, conflicts_for_viewer, remember_month, remembered_month, resolve_target, sheet_permissions, signature_from_form, submission_context
 from .notifications import notify_submitted
 from .submission import save_signature_picture, submitted_message
 
@@ -36,6 +36,7 @@ def view(request: Request, year: int, month: int, user_id: Optional[int] = None,
     check_month(year, month)
     remember_month(request, year, month)
     s = get_settings()
+    week_start, handover = oncall_week(db, s)
     target = resolve_target(db, me, user_id)
     sheet = workflow.get_sheet(db, target, KIND_ONCALL, year, month)
     start, end = month_bounds(year, month)
@@ -57,13 +58,13 @@ def view(request: Request, year: int, month: int, user_id: Optional[int] = None,
     neighbour_dates = workflow.oncall_dates(db, target, start - dt.timedelta(days=6), end + dt.timedelta(days=6))
     week_rows: Dict[dt.date, int] = {}
     for date in days:
-        ws = rotation_week_start(date, s.oncall_week_start)
+        ws = rotation_week_start(date, week_start)
         week_rows[ws] = week_rows.get(ws, 0) + 1
     rows = []
     seen_weeks = set()
     for date in days:
         row = by_date.get(date)
-        ws = rotation_week_start(date, s.oncall_week_start)
+        ws = rotation_week_start(date, week_start)
         week = None
         if ws not in seen_weeks:
             seen_weeks.add(ws)
@@ -81,18 +82,21 @@ def view(request: Request, year: int, month: int, user_id: Optional[int] = None,
             "week_key": ws.isoformat(), "week": week,
             "ot_hours": ot_hours.get(date) if row else None,
         })
+    conflicts = conflicts_for_viewer(db, me, sheet) if me.id != target.id else {}
+    for r in rows:
+        r["conflict"] = conflicts.get(r["date"])
     grade = workflow.grade_of(db, target)
     counts = {}
     for d in (sheet.oncall_days if sheet else []):
         counts[d.day_type] = counts.get(d.day_type, 0) + 1
     return render(request, "oncall.html", {
         "year": year, "month": month, "target": target, "sheet": sheet, "rows": rows, "grade": grade,
-        "is_expert": is_expert, "total": workflow.oncall_total(sheet) if sheet else 0, "counts": counts,
+        "conflicts": conflicts, "is_expert": is_expert, "total": workflow.oncall_total(sheet) if sheet else 0, "counts": counts,
         "interventions": (sum(1 for d in (sheet.oncall_days if sheet else []) if d.intervention) if is_expert
                           else sum(1 for r in rows if r["ot_hours"])),
         "show_amounts": can_see_amounts(db, me, target),
-        "week_start_name": WEEKDAY_NAMES[s.oncall_week_start],
-        "week_end_name": WEEKDAY_NAMES[(s.oncall_week_start + 6) % 7],
+        "week_start_name": WEEKDAY_NAMES[week_start], "week_handover": handover,
+        "week_end_name": WEEKDAY_NAMES[(week_start + 6) % 7],
         **sheet_permissions(me, target, sheet),
         **(submission_context(db, me, year, month) if me.id == target.id else {}),
     })
@@ -103,6 +107,7 @@ async def save(request: Request, year: int, month: int, background: BackgroundTa
                me: User = Depends(current_user), db: Session = Depends(get_db)):
     check_month(year, month)
     s = get_settings()
+    week_start, _handover = oncall_week(db, s)
     form = await request.form()
     start, end = month_bounds(year, month)
 
@@ -116,7 +121,7 @@ async def save(request: Request, year: int, month: int, background: BackgroundTa
             ws = dt.date.fromisoformat(key[3:])
         except ValueError:
             continue
-        if rotation_week_start(ws, s.oncall_week_start) != ws:
+        if rotation_week_start(ws, week_start) != ws:
             continue
         for d in rotation_week(ws):
             if start <= d <= end:
