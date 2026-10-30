@@ -3,10 +3,13 @@
 {% block content %}
 {% include "admin/_nav.html" %}
 <div class="row-between">
-  <h1>Users</h1>
-  <a class="btn btn-primary" href="/admin/users/new">New local user</a>
+  <h1>{{ "Archived users" if archived else "Users" }}</h1>
+  <div class="actions">
+    {% if archived %}<a class="btn btn-ghost" href="/admin/users">Back to users</a>{% elif n_archived %}<a class="btn btn-ghost" href="/admin/users?archived=1">Archived ({{ n_archived }})</a>{% endif %}
+    <a class="btn btn-primary" href="/admin/users/new">New local user</a>
+  </div>
 </div>
-<form method="get" class="inline-form"><label class="sr-only" for="user-search">Search users</label><input id="user-search" name="q" value="{{ q }}" placeholder="Search name, username, team"> <button class="btn btn-ghost">Search</button></form>
+<form method="get" class="inline-form"><input type="hidden" name="archived" value="{{ 1 if archived else 0 }}"><label class="sr-only" for="user-search">Search users</label><input id="user-search" name="q" value="{{ q }}" placeholder="Search name, username, team"> <button class="btn btn-ghost">Search</button></form>
 <div class="table-wrap">
 <table class="table animate">
   <thead><tr><th scope="col">Username</th><th scope="col">Name</th><th scope="col">Team</th><th scope="col">Manager</th><th scope="col">Grade</th><th scope="col">Source</th><th scope="col">Flags</th><th scope="col">Last login</th></tr></thead>
@@ -19,7 +22,7 @@
       <td>{{ u.manager.full_name if u.manager else "—" }}{% if u.manager_locked %} 🔒{% endif %}</td>
       <td>{{ u.grade.code if u.grade else "default" }}</td>
       <td>{{ u.auth_source }}</td>
-      <td>{% if u.is_admin %}<span class="tag">Admin</span>{% endif %}{% if u.is_expert %}<span class="tag">Expert</span>{% endif %}{% if u.is_procurement %}<span class="tag">Procurement</span>{% endif %}{% if not u.is_active %}<span class="tag">Inactive</span>{% endif %}</td>
+      <td>{% if u.is_admin %}<span class="tag">Admin</span>{% endif %}{% if u.is_expert %}<span class="tag">Expert</span>{% endif %}{% if u.is_procurement %}<span class="tag">Procurement</span>{% endif %}{% if u.is_archived %}<span class="tag">Archived</span>{% elif not u.is_active %}<span class="tag">Inactive</span>{% endif %}</td>
       <td>{{ u.last_login_at|datetime }}</td>
     </tr>
   {% endfor %}

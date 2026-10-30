@@ -163,6 +163,8 @@ After LDAP works, set `LOCAL_LOGIN_ADMIN_ONLY=true`. This keeps only the local b
 | IT Procurement | **Payroll**: downloads the on-call and overtime reports of the whole organisation (work month + everything validated late), and **records that they were sent to Finance**. That closes the payroll period: anything approved afterwards is paid the following month and the employee is notified. Cannot see individual declarations. |
 | Admin | Users (manager, grade, Expert/Admin flags, local accounts), grades and on-call rates, legal holidays (with `.ics` import), TIL factors, settings (e.g. hide on-call amounts from employees), audit log. Can reopen an approved sheet. |
 
+Employees have a built-in **User Guide** (nav tab before Admin) explaining how to file on-call and overtime.
+
 Colleagues never see each other's declarations. Managers see only the people below them in the hierarchy.
 
 ### Exports for Finance

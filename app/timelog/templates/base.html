@@ -36,6 +36,7 @@
       <a href="/team" class="{{ 'active' if path.startswith('/team') }}">Statistics</a>
     {% endif %}
     {% if user.is_procurement or user.is_admin %}<a href="/payroll" class="{{ 'active' if path.startswith('/payroll') }}">Payroll</a>{% endif %}
+    <a href="/guide" class="guide-link {{ 'active' if path.startswith('/guide') }}">User Guide</a>
   </nav>
   {% if user.is_admin %}<a class="admin-link {{ 'active' if path.startswith('/admin') }}" href="/admin/users">Admin</a>{% endif %}
   <div class="who">

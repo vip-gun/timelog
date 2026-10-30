@@ -202,11 +202,11 @@ def test_navigation_order_and_statistics_page(browser, db, users):
         return links, header
 
     links, header = nav(admin.get("/").text)
-    assert links == ["Dashboard", "On-call", "Overtime", "Approvals", "Statistics", "Payroll"]
+    assert links == ["Dashboard", "On-call", "Overtime", "Approvals", "Statistics", "Payroll", "User Guide"]
     # Admin sits on the right, between the navigation and the user block
     assert header.index("</nav>") < header.index('class="admin-link') < header.index('class="who"')
-    assert nav(proc.get("/").text)[0] == ["Dashboard", "On-call", "Overtime", "Payroll"] and 'class="admin-link' not in nav(proc.get("/").text)[1]
-    assert nav(mgr.get("/").text)[0] == ["Dashboard", "On-call", "Overtime", "Approvals", "Statistics"]
+    assert nav(proc.get("/").text)[0] == ["Dashboard", "On-call", "Overtime", "Payroll", "User Guide"] and 'class="admin-link' not in nav(proc.get("/").text)[1]
+    assert nav(mgr.get("/").text)[0] == ["Dashboard", "On-call", "Overtime", "Approvals", "Statistics", "User Guide"]
 
     page = mgr.get("/team").text
     assert "<h1>Statistics</h1>" in page and "<title>Timelog - Statistics" in page

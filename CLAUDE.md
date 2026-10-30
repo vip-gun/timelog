@@ -48,6 +48,14 @@ A weekend day that is also a holiday counts in HL121 only (never HL130).
 
 - **Employee types**: normal and **Expert** (`users.is_expert`). Both can do on-call.
   **Only normal employees can file overtime** (enforced server-side, 403 for experts).
+- **User lifecycle** (Admin › Users, `routes/admin.py`): the **Team** field suggests the existing teams (`<datalist>`, free text still
+  allowed for a new team). **Archive** (`users.is_archived`, `POST /admin/users/<id>/archive|unarchive`): disables sign-in
+  (`is_active` false), hides the user from the list (an "Archived (N)" view shows them) and from the manager/team suggestions, and keeps
+  every sheet, payroll record and audit entry; *Restore* re-activates. **Delete** (`POST /admin/users/<id>/delete`) removes the account
+  and its unapproved sheets, signatures and notices, unlinks direct reports (no manager) and clears the actor of old audit rows; it is
+  **refused** for yourself, the last active admin, a user with **approved sheets** or who recorded a payroll run (archive instead).
+  Both are audited (`user_archive`, `user_unarchive`, `user_delete`). Archiving a manager leaves their reports pointing at them: the
+  admin reassigns them (the flash says how many).
 - **Grades**: on-call daily rates are configurable **per grade** (`grades` table). Each user has a grade (falls back to the
   default grade).
 - **On-call amount per day** = `rate[grade][day_type] × (2 if expert and intervention else 1)`.
@@ -130,7 +138,7 @@ approved ──reopen (admin only, audited, latest sheet of the month only)─�
   overtime) nothing is submitted. The submit panel is on both pages; the on-call page's "Save & submit" first saves the grid.
   Withdraw / reject / approve stay per sheet.
 - **Navigation** (`base.html`): Dashboard, On-call, Overtime, Approvals, Statistics (managers/admin; `/team`, `access.can_view_team`),
-  Payroll (procurement/admin), then **Admin on the right, just before the user block**.
+  Payroll (procurement/admin), **User Guide** (everyone, last item of the nav, just before Admin; styled as a lighter purple tab with a border, `.guide-link`), then **Admin on the right, just before the user block**.
 - **Month sync**: the month last viewed on the on-call or overtime page is kept in the session (`remember_month`); the nav links
   `/oncall` and `/overtime` open that month (else the current one). A "Current month" button returns to today's month.
 - **Approver = the direct line manager, any manager above them in the chain (skip-level approval, `access.is_above`), or an admin.**
@@ -301,6 +309,14 @@ Without them the footer says "dev build, started <server start time>" (`version.
 - Everything is audited. Backups hold personal data and the Fernet-encrypted LDAP password (a restore needs the same `SECRET_KEY`).
   `scripts/backup-db.sh` (native `pg_dump`, unencrypted) remains as an alternative for cron.
 
+### 6.4b User Guide (employees)
+`/guide` (`routes/guide.py`, `templates/guide.html`, nav "User Guide" for every signed-in user, last nav item before Admin). A task-oriented guide
+for employees: the short version, on-call, overtime, interventions, submitting, statuses, cut-off/late claims, FAQ. It adapts to
+the viewer (Experts get no overtime how-to, the signature step only appears when `signature_required` is on, TIL text follows
+`features.til`) and reads live values (rotation start/handover, time step, night window, look-back, payroll cut-off). It never prints
+rates or amounts (they can be hidden from employees). Two screenshots in `static/guide/` (demo data). Keep it in step with §2/§3 and
+Admin › Documentation (which is the administrator's reference). At ≤ 1240 px the header hides the user name so the admin nav still fits.
+
 ### 6.5 Admin › Documentation
 `/admin/docs` (`templates/admin/docs.html`) explains the application, SSL/HTTPS (incl. PFX conversion), LDAP and operations. It reads
 live values (rotation week, step, night window, payroll cut-off). Keep it in step with the rules in this file.
@@ -334,7 +350,7 @@ app/timelog/             Python package
   web.py, main.py        template helpers; app factory (middleware, scheduler, error handlers)
   version.py             version / build info
   seed.py, demo.py       initial data; `python -m timelog.demo` creates demo local users
-  routes/                auth, home, oncall, overtime, approvals, submission, payroll, team, admin, common, notifications
+  routes/                auth, home, oncall, overtime, approvals, submission, payroll, team, guide, admin, common, notifications
   templates/, static/
 app/tests/               pytest (SQLite; PostgreSQL via TEST_DATABASE_URL)
 proxy/nginx.conf.template
@@ -424,10 +440,10 @@ The JS (`static/app.js`) has no automated tests; static assets are excluded from
 
 ## 9. Current state
 
-- Version **1.7.0**. 101 pytest tests pass on SQLite; the backup and restore tests also pass on PostgreSQL 16. SonarQube (0 issues,
+- Version **1.9.0**. 112 pytest tests pass on SQLite; the backup and restore tests also pass on PostgreSQL 16. SonarQube (0 issues,
   0 hotspots, gate passed) and Dependency-Track (0 findings) re-run clean on this version.
-- Latest offline package: `dist/timelog-1.7.0-offline-rhel9-amd64.zip` (+ `.sha256`), built from the 1.7.0 sources. Older packages in
-  `dist/` (1.3.1, 1.4.0) are obsolete.
+- Latest offline package: `dist/timelog-1.9.0-offline-rhel9-amd64.zip` (+ `.sha256`, 21 bundled Docker RPMs), built from the 1.9.0 sources after
+  tests, SonarQube and Dependency-Track were clean. Older packages in `dist/` (1.3.1, 1.4.0, 1.7.0) are obsolete.
 - The local Docker instance holds no demo users: only `admin` and `tuser` (admin). Demo data for screenshots lives in a throwaway
   SQLite database, never in the local stack.
 - **Verified**: image build; the full stack (nginx HTTPS + app + PostgreSQL 16, all healthy); HTTP→HTTPS redirect; every page for

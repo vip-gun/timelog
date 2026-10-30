@@ -32,7 +32,7 @@ def _sheets(db, user, kind):
 
 
 def test_version_and_tab_title(browser, users):
-    assert __version__ == "1.7.0"
+    assert __version__ == "1.9.0"
     assert "<title>Timelog - Dashboard</title>" in browser("alice").get("/").text
     assert "<title>Timelog - Sign In</title>" in browser().get("/login").text
 

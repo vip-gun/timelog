@@ -95,6 +95,10 @@ h2 { font-size: 1.3rem; margin: 0 0 1rem; }
 .admin-link { background: var(--burgundy); color: #fff; border: 1px solid var(--burgundy-edge); font-weight: 600; padding-top: calc(.45rem - 1px); padding-bottom: calc(.45rem - 1px); }
 .admin-link:hover, .admin-link.active { background: var(--burgundy-hover); }
 .admin-link::after { display: none; }
+/* User Guide tab: a lighter shade of the header purple, with a border */
+.topbar nav a.guide-link { background: #66557A; color: #fff; border: 1px solid var(--secondary-vlight); font-weight: 600; padding-top: calc(.45rem - 1px); padding-bottom: calc(.45rem - 1px); margin-left: .35rem; }
+.topbar nav a.guide-link:hover, .topbar nav a.guide-link.active { background: #75648A; }
+.topbar nav a.guide-link::after { display: none; }
 .who { display: flex; gap: .9rem; align-items: center; font-size: .9rem; }
 .avatar { width: 34px; height: 34px; border-radius: 2px; display: grid; place-items: center; font-weight: 600; font-size: .85rem; color: var(--secondary); background: var(--primary-vvlight); border: 2px solid var(--primary-vlight); }
 .who .tag { background: rgba(255,255,255,.14); color: #fff; }
@@ -314,6 +318,10 @@ input[type=checkbox]:disabled { opacity: .55; cursor: default; }
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
 }
 
+@media (max-width: 1240px) {
+  .who span.name { display: none; }
+}
+
 @media (max-width: 760px) {
   .topbar { gap: .8rem; padding: .6rem 1rem; }
   .who span.name { display: none; }
@@ -442,3 +450,13 @@ pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
   .docs-layout { grid-template-columns: 1fr; }
   .docs-toc { position: static; flex-direction: row; flex-wrap: wrap; }
 }
+
+/* user guide */
+.guide-shot { display: block; max-width: 100%; height: auto; margin: 1rem 0; border: 1px solid var(--border, #d8d6d0); }
+.faq dt { font-weight: 600; margin-top: 1rem; }
+.faq dd { margin: .2rem 0 0; }
+.callout { margin: 1rem 0; padding: .8rem 1rem; background: var(--secondary-tint); border: 1px solid var(--secondary-vlight); border-left: 4px solid var(--secondary); border-radius: 2px; color: var(--text); }
+.callout > :last-child { margin-bottom: 0; }
+.callout-title { display: block; margin-bottom: .25rem; font-family: "JetBrains Mono", monospace; font-size: .72rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--secondary); }
+.callout-warn { background: var(--primary-tint); border-color: var(--primary-vlight); border-left-color: var(--primary); }
+.callout-warn .callout-title { color: var(--primary); }

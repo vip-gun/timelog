@@ -81,6 +81,8 @@ class User(Base):
     # IT Procurement: downloads the payroll reports (whole organisation) and records that they were sent to Finance
     is_procurement: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Archived: disabled and hidden from the user list; every record (sheets, payroll, audit) is kept
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
 
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
     last_login_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)

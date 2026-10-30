@@ -13,7 +13,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from . import backup
 from .config import Settings, get_settings, set_settings
 from .db import Base, SessionLocal, ensure_columns, init_engine
-from .routes import admin, approvals, auth, home, oncall, overtime, payroll, submission, team
+from .routes import admin, approvals, auth, guide, home, oncall, overtime, payroll, submission, team
 from .security import LoginRequired
 from .seed import seed
 from .web import BASE_DIR, render
@@ -67,7 +67,7 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
         https_only=s.session_cookie_secure,
     )
     app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
-    for module in (auth, home, oncall, overtime, approvals, submission, payroll, team, admin):
+    for module in (auth, home, oncall, overtime, approvals, submission, payroll, team, guide, admin):
         app.include_router(module.router)
 
     @app.exception_handler(LoginRequired)

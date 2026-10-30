@@ -7,7 +7,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
-from sqlalchemy import extract, or_, select
+from sqlalchemy import delete, extract, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -22,7 +22,7 @@ from ..config import get_settings
 from ..ldap_auth import diagnose
 from ..db import get_db, get_engine
 from ..ics_import import MAX_BYTES, IcsError, parse_ics
-from ..models import DAY_TYPES, SETTING_ONCALL_HANDOVER, SETTING_ONCALL_WEEK_START, SETTING_PAYROLL_CUTOFF, SETTING_SHOW_AMOUNTS, SETTING_SIGNATURE_REQUIRED, SETTING_TIL_ENABLED, AppSetting, AuditLog, Grade, Holiday, OvertimeRule, User, utcnow
+from ..models import APPROVED, DAY_TYPES, SETTING_ONCALL_HANDOVER, SETTING_ONCALL_WEEK_START, SETTING_PAYROLL_CUTOFF, SETTING_SHOW_AMOUNTS, SETTING_SIGNATURE_REQUIRED, SETTING_TIL_ENABLED, AppSetting, AuditLog, Grade, Holiday, Notification, OnCallDay, OvertimeEntry, OvertimeRule, PayrollRun, SavedSignature, Sheet, Signature, User, utcnow
 from ..security import admin_user, check_password_policy, flash, hash_password, verify_csrf
 from ..web import redirect, render
 from ..workflow import audit
@@ -42,22 +42,25 @@ def _dec(value: str, field: str) -> Decimal:
 
 # ------------------------------------------------------------------ users
 @router.get("/users")
-def users(request: Request, q: str = "", db: Session = Depends(get_db)):
-    stmt = select(User)
+def users(request: Request, q: str = "", archived: int = 0, db: Session = Depends(get_db)):
+    stmt = select(User).where(User.is_archived.is_(True) if archived else User.is_archived.is_not(True))
     if q:
         like = f"%{q.lower()}%"
         stmt = stmt.where(or_(User.username.ilike(like), User.first_name.ilike(like), User.last_name.ilike(like),
                               User.display_name.ilike(like), User.team.ilike(like)))
     rows = sorted(db.scalars(stmt), key=lambda u: u.sort_key)
-    return render(request, "admin/users.html", {"users": rows, "q": q})
+    n_archived = db.scalar(select(func.count(User.id)).where(User.is_archived.is_(True)))
+    return render(request, "admin/users.html", {"users": rows, "q": q, "archived": bool(archived), "n_archived": n_archived})
 
 
 def _user_form_ctx(db: Session, user: Optional[User]) -> dict:
-    candidates = sorted(db.scalars(select(User).where(User.is_active.is_(True))), key=lambda u: u.full_name.lower())
+    candidates = sorted(db.scalars(select(User).where(User.is_active.is_(True), User.is_archived.is_not(True))), key=lambda u: u.full_name.lower())
     if user is not None and user.id:
         excluded = subordinate_ids(db, user) | {user.id}
         candidates = [c for c in candidates if c.id not in excluded]
-    return {"edit_user": user, "managers": candidates, "grades": list(db.scalars(select(Grade).order_by(Grade.code)))}
+    teams = sorted({x for x in db.scalars(select(User.team).where(User.is_archived.is_not(True))) if x and x.strip()}, key=str.lower)
+    return {"edit_user": user, "managers": candidates, "teams": teams,
+            "grades": list(db.scalars(select(Grade).order_by(Grade.code)))}
 
 
 @router.get("/users/new")
@@ -107,7 +110,7 @@ def save_user(
         user.manager_locked = bool(manager_locked)
         if user.id == me.id and (not is_admin or not is_active):
             raise ValueError("You cannot remove your own admin rights or deactivate yourself.")
-        user.is_admin, user.is_active = bool(is_admin), bool(is_active)
+        user.is_admin, user.is_active = bool(is_admin), bool(is_active) and not user.is_archived
         user.is_procurement = bool(is_procurement)
         new_manager = int(manager_id) if manager_id else None
         if new_manager is not None and user.id is not None:
@@ -178,6 +181,90 @@ def save_grade(request: Request, grade_id: Optional[int] = Form(None), code: str
         db.rollback()
         flash(request, "Grade code already exists.", "error")
     return redirect("/admin/grades")
+
+
+def _delete_blocker(db: Session, me: User, user: User) -> Optional[str]:
+    """Why this user cannot be deleted (None when deletion is allowed). Approved sheets and payroll runs are
+    accounting evidence, so those users can only be deactivated."""
+    if user.id == me.id:
+        return "You cannot delete your own account."
+    if user.is_admin and user.is_active and db.scalar(
+            select(func.count(User.id)).where(User.is_admin.is_(True), User.is_active.is_(True), User.id != user.id)) == 0:
+        return "This is the last active administrator."
+    if db.scalar(select(func.count(Sheet.id)).where(Sheet.user_id == user.id, Sheet.status == APPROVED)):
+        return "This user has approved sheets (payroll records). Archive the account instead."
+    if db.scalar(select(func.count(PayrollRun.id)).where(PayrollRun.sent_by_id == user.id)):
+        return "This user recorded a payroll run sent to Finance. Archive the account instead."
+    return None
+
+
+@router.post("/users/{user_id}/delete", dependencies=[Depends(verify_csrf)])
+def delete_user(request: Request, user_id: int, me: User = Depends(admin_user), db: Session = Depends(get_db)):
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(404, "Not found")
+    blocker = _delete_blocker(db, me, user)
+    if blocker:
+        flash(request, blocker, "error")
+        return redirect(f"/admin/users/{user_id}")
+    name = user.username
+    sheet_ids = list(db.scalars(select(Sheet.id).where(Sheet.user_id == user_id)))
+    reports = db.execute(update(User).where(User.manager_id == user_id).values(manager_id=None)).rowcount
+    db.execute(update(Sheet).where(Sheet.decided_by_id == user_id).values(decided_by_id=None))
+    db.execute(update(AuditLog).where(AuditLog.actor_id == user_id).values(actor_id=None))
+    db.execute(delete(Signature).where(or_(Signature.user_id == user_id, Signature.sheet_id.in_(sheet_ids))))
+    db.execute(delete(SavedSignature).where(SavedSignature.user_id == user_id))
+    db.execute(delete(Notification).where(Notification.user_id == user_id))
+    db.execute(delete(OnCallDay).where(OnCallDay.sheet_id.in_(sheet_ids)))
+    db.execute(delete(OvertimeEntry).where(OvertimeEntry.sheet_id.in_(sheet_ids)))
+    db.execute(delete(Sheet).where(Sheet.user_id == user_id))
+    db.expire_all()
+    db.delete(db.get(User, user_id))
+    audit(db, me, "user_delete", "user", user_id, username=name, sheets_removed=len(sheet_ids), reports_unlinked=reports)
+    db.commit()
+    flash(request, f"User {name} deleted" + (f"; {reports} direct report(s) now have no manager." if reports else "."), "success")
+    return redirect("/admin/users")
+
+
+def _archive_blocker(db: Session, me: User, user: User) -> Optional[str]:
+    if user.id == me.id:
+        return "You cannot archive your own account."
+    if user.is_admin and user.is_active and db.scalar(
+            select(func.count(User.id)).where(User.is_admin.is_(True), User.is_active.is_(True), User.id != user.id)) == 0:
+        return "This is the last active administrator."
+    return None
+
+
+@router.post("/users/{user_id}/archive", dependencies=[Depends(verify_csrf)])
+def archive_user(request: Request, user_id: int, me: User = Depends(admin_user), db: Session = Depends(get_db)):
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(404, "Not found")
+    blocker = _archive_blocker(db, me, user)
+    if blocker:
+        flash(request, blocker, "error")
+        return redirect(f"/admin/users/{user_id}")
+    user.is_active, user.is_archived = False, True
+    live_reports = db.scalar(select(func.count(User.id)).where(User.manager_id == user_id, User.is_active.is_(True)))
+    audit(db, me, "user_archive", "user", user.id, username=user.username, active_reports=live_reports)
+    db.commit()
+    msg = f"User {user.username} archived: sign-in disabled, records kept."
+    if live_reports:
+        msg += f" {live_reports} active direct report(s) still point to this manager; assign them a new one."
+    flash(request, msg, "success")
+    return redirect("/admin/users")
+
+
+@router.post("/users/{user_id}/unarchive", dependencies=[Depends(verify_csrf)])
+def unarchive_user(request: Request, user_id: int, me: User = Depends(admin_user), db: Session = Depends(get_db)):
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(404, "Not found")
+    user.is_active, user.is_archived = True, False
+    audit(db, me, "user_unarchive", "user", user.id, username=user.username)
+    db.commit()
+    flash(request, f"User {user.username} restored and active again.", "success")
+    return redirect(f"/admin/users/{user_id}")
 
 
 # ------------------------------------------------------------------ holidays

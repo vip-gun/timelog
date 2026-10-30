@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+{% block title %}User Guide{% endblock %}
+{% block content %}
+{% set step = settings.overtime_step_minutes %}
+{% set night = '%02d:%02d' % (settings.night_start // 60, settings.night_start % 60) ~ '–' ~ '%02d:%02d' % (settings.night_end // 60, settings.night_end % 60) %}
+<div class="page-head"><div><span class="eyebrow">Help</span><h1>User guide</h1></div></div>
+
+<div class="docs-layout">
+<nav class="subnav docs-toc" aria-label="Sections">
+  <a href="#quick">The short version</a>
+  <a href="#oncall">Declaring on-call</a>
+  <a href="#overtime">Declaring overtime</a>
+  <a href="#called">Called during on-call</a>
+  <a href="#submit">Submitting</a>
+  <a href="#after">After you submit</a>
+  <a href="#late">Deadlines &amp; late claims</a>
+  <a href="#faq">Questions &amp; problems</a>
+</nav>
+<div class="docs-body">
+
+<section class="card docs" id="quick">
+  <h2>The short version</h2>
+  <p>Each month you fill in up to two sheets, then send them to your line manager in one go.</p>
+  <ol>
+    <li><strong>On-call</strong>: tick the days you were on call (or switch on a whole rotation week).</li>
+    <li><strong>Overtime</strong> (normal employees): add one entry per period worked, with start and end time and a short description.</li>
+    <li><strong>Submit</strong> the month. One button sends everything for that month to your manager.</li>
+    <li>Your manager <strong>approves</strong> it, or <strong>rejects</strong> it with a comment. If rejected, fix it and submit again.</li>
+  </ol>
+  <p>The <a href="/">Dashboard</a> shows the status of your last six months at a glance:
+    <em>not started</em>, <em>draft</em>, <em>submitted</em>, <em>rejected</em> or <em>approved</em>.</p>
+  {% if user.is_expert %}
+  <div class="callout"><span class="callout-title">You are an Expert</span>you declare on-call only. There is no Overtime page for you; interventions are recorded on the on-call sheet (see <a href="#called">Called during on-call</a>).</div>
+  {% endif %}
+  <div class="callout"><span class="callout-title">Privacy</span>Nobody but you and the managers above you can see your sheets. Colleagues never see each other's declarations.</div>
+</section>
+
+<section class="card docs" id="oncall">
+  <h2>Declaring on-call</h2>
+  <p>Open <a href="/oncall">On-call</a>. The page shows one month, with the days grouped by <strong>rotation week</strong>.
+    Cover rotates weekly: a week starts on <strong>{{ week_start_name }} at {{ week_handover }}</strong> and ends the following {{ week_end_name }}.
+    Days are booked whole; the handover time is only information.</p>
+  <img class="guide-shot" src="/static/guide/oncall.png?v={{ build.asset_tag }}" width="2040" height="1500" alt="The on-call page: one month grouped by rotation week, with the week switch on the left and a tick box per day">
+  <h3>Book the days</h3>
+  <ul>
+    <li><strong>A whole week</strong>: use the switch in the left column of that week. It books all seven days at once.</li>
+    <li><strong>Single days</strong>: tick the box of each day you were on call.</li>
+    <li><strong>A week that spans two months</strong>: the switch books the days of the other month on that month's sheet too. If that other sheet is already submitted or approved, those days are skipped and you get a warning; ask your manager (or an administrator) how to correct it.</li>
+  </ul>
+  <p>Press <strong>Save draft</strong>. The page shows the number of days and, when your organisation shows amounts to employees, the stipend per day. Each day is
+    classed automatically as <em>weekday</em>, <em>Saturday</em>, <em>Sunday</em> or <em>legal holiday</em>; a holiday that falls on a weekend counts as a holiday.</p>
+  <div class="callout"><span class="callout-title">Note</span>Two people cannot be on call at the same time. You are never blocked, but your manager is alerted if a colleague has the same day on a submitted or approved sheet.</div>
+  {% if user.is_expert %}
+  <h3>Interventions (Experts)</h3>
+  <p>If you were called out on a day, tick <strong>Intervention</strong> on that day and fill in the <strong>incident number</strong> and a short <strong>comment</strong>.
+    A day with an intervention is paid at double rate, whatever its duration.</p>
+  {% endif %}
+</section>
+
+{% if not user.is_expert %}
+<section class="card docs" id="overtime">
+  <h2>Declaring overtime</h2>
+  <p>Open <a href="/overtime">Overtime</a> and use the <strong>Log overtime</strong> form at the top.</p>
+  <img class="guide-shot" src="/static/guide/overtime.png?v={{ build.asset_tag }}" width="2040" height="1500" alt="The overtime page: the entry form above the table of entries with day and night hours per day type">
+  <table class="table">
+    <thead><tr><th scope="col">Field</th><th scope="col">What to enter</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">Date</th><td>The day you worked. Today or earlier, up to {{ settings.overtime_lookback_months }} months back.</td></tr>
+      <tr><th scope="row">From / To</th><td>Start and end time in {{ step }}-minute steps. Pick from the list or <strong>type it</strong>: <code>08:45</code>, <code>8.45</code>, <code>8h45</code>, <code>0845</code> or just <code>8</code> all work. For the end, <code>24:00</code> means midnight.</td></tr>
+      {% if features.til %}
+      <tr><th scope="row">Compensation</th><td><strong>Paid</strong> (default) or <strong>Time in lieu</strong> (time off instead of payment; no payment is made for that entry).</td></tr>
+      {% endif %}
+      <tr><th scope="row">Incident #</th><td>The ticket number, when the work relates to an incident.</td></tr>
+      <tr><th scope="row">Description</th><td>What you did. Required.</td></tr>
+      <tr><th scope="row">Pre-approved</th><td>Tick it when your manager asked for or agreed to <strong>weekend or holiday</strong> work that is not on one of your on-call days.</td></tr>
+    </tbody>
+  </table>
+  <h3>What the application does for you</h3>
+  <ul>
+    <li><strong>Night hours</strong> ({{ night }}) are worked out automatically and shown separately from day hours.</li>
+    <li><strong>Past midnight</strong>: an entry that crosses midnight is split into one entry per day. If the second part would fall in the next month, enter it on that month's sheet instead.</li>
+    <li><strong>Overlaps</strong>: two entries of yours cannot overlap, and the start and end cannot be equal.</li>
+    <li><strong>Day type</strong> (weekday, Saturday, Sunday, legal holiday) is set from the date.</li>
+    {% if features.til %}<li><strong>Time in lieu</strong> is credited with a factor that depends on the day type and on day or night; the table under your entries shows it.</li>{% endif %}
+  </ul>
+  <h3>Weekends and holidays</h3>
+  <div class="callout callout-warn"><span class="callout-title">Required</span>Overtime on a Saturday, Sunday or legal holiday must be either on one of <strong>your on-call days</strong> (recognised automatically) or marked <strong>pre-approved</strong>. Otherwise the month cannot be submitted.</div>
+  <h3>Forgot a day in a previous month?</h3>
+  <p>Enter it with its real date: it goes to the sheet of that month.</p>
+  <ul>
+    <li>Sheet still a <em>draft</em> or <em>rejected</em>: the entry is added to it.</li>
+    <li>Sheet <em>submitted</em> and waiting: <strong>withdraw</strong> it first, add the entry, then submit again.</li>
+    <li>Sheet already <em>approved</em>: a <strong>supplementary sheet</strong> is opened for that month and goes to your manager like any other. It may be paid later (see <a href="#late">Deadlines</a>).</li>
+  </ul>
+  <h3>Corrections</h3>
+  <p>Entries can be deleted while the sheet is a draft or rejected. Delete the wrong one and add it again.</p>
+</section>
+{% else %}
+<section class="card docs" id="overtime">
+  <h2>Declaring overtime</h2>
+  <p>Experts do not declare overtime: interventions are recorded on the on-call sheet (see <a href="#oncall">Declaring on-call</a>).</p>
+</section>
+{% endif %}
+
+<section class="card docs" id="called">
+  <h2>Called during on-call duty</h2>
+  {% if user.is_expert %}
+  <p>On the on-call sheet, tick <strong>Intervention</strong> for that day and add the incident number and a comment. That is all: there is nothing to log elsewhere.</p>
+  {% else %}
+  <p>Work you do when called during your on-call duty is declared as <strong>overtime</strong>, not on the on-call sheet.</p>
+  <ol>
+    <li>Make sure the day is booked on your <a href="/oncall">on-call</a> sheet.</li>
+    <li>On <a href="/overtime">Overtime</a>, add an entry for the time you actually worked, with the <strong>incident number</strong> and a description.</li>
+    <li>The entry is recognised as an <strong>on-call intervention</strong> automatically (tag <em>On-call</em>), so you do not need pre-approval for weekends and holidays.</li>
+  </ol>
+  <p>The Intervention column of your on-call sheet then shows, read-only, the overtime hours logged on each on-call day, with a link to the entry.</p>
+  <div class="callout"><span class="callout-title">Experts</span>Experts record interventions differently (on the on-call sheet, at a double daily rate), so what you see here applies to normal employees.</div>
+  {% endif %}
+</section>
+
+<section class="card docs" id="submit">
+  <h2>Submitting</h2>
+  <p>You submit <strong>once per month</strong>. The <strong>Submit</strong> panel is on both the On-call and Overtime pages.</p>
+  <ol>
+    <li>Check the totals on each page.</li>
+    <li>Add a comment for your manager if useful.</li>
+    {% if features.signature %}
+    <li><strong>Sign</strong>: draw your signature in the box or upload a picture of it, and tick the confirmation statement. You may tick <em>Remember this signature</em> to have it filled in next time; <em>Forget it</em> removes it.</li>
+    {% endif %}
+    <li>Press <strong>Submit</strong>.</li>
+  </ol>
+  <p>Everything that is still editable for that month (on-call, overtime and any supplementary overtime sheet) is sent together.
+    On the on-call page, <em>Save &amp; submit for validation</em> saves the grid first.</p>
+  <div class="callout callout-warn"><span class="callout-title">All or nothing</span>If one sheet has a problem, for example weekend overtime that is neither on-call nor pre-approved, nothing is sent and the page tells you what to fix.</div>
+  <p>Changed your mind or spotted a mistake? While a sheet is <em>submitted</em> and not yet decided, use <strong>Withdraw submission</strong> to go back to a draft.</p>
+</section>
+
+<section class="card docs" id="after">
+  <h2>After you submit</h2>
+  <table class="table">
+    <thead><tr><th scope="col">Status</th><th scope="col">Meaning</th><th scope="col">What you do</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">Draft</th><td>Being prepared, not sent.</td><td>Edit and submit.</td></tr>
+      <tr><th scope="row">Submitted</th><td>Waiting for your line manager (or a manager above them).</td><td>Nothing. You can withdraw it.</td></tr>
+      <tr><th scope="row">Rejected</th><td>Your manager sent it back with a comment.</td><td>Read the comment, correct the sheet, submit again.</td></tr>
+      <tr><th scope="row">Approved</th><td>Validated; it will be paid.</td><td>Nothing. It can no longer be edited.</td></tr>
+    </tbody>
+  </table>
+  <div class="callout callout-warn"><span class="callout-title">Good to know</span>Once a sheet is submitted, the figures on it are <strong>frozen</strong>: a later change of rates does not alter what you submitted. An approved sheet can only be reopened by an administrator; ask your manager if a correction is needed.</div>
+  <p>Messages about your sheets (late payment, payment sent to Finance) appear as banners at the top of every page until you press <strong>Dismiss</strong>, and as an e-mail when mail is configured.</p>
+</section>
+
+<section class="card docs" id="late">
+  <h2>Deadlines &amp; late claims</h2>
+  <p>Finance processes each month after a <strong>cut-off</strong>: <strong>day {{ payroll_cutoff }} of the following month</strong>.
+    A sheet that is <strong>approved</strong> by then is paid with the month you worked.</p>
+  <ul>
+    <li>Submit early in the month after the one you worked, so your manager has time to approve before the cut-off.</li>
+    <li>If the approval comes after the cut-off, or the month was already sent to Finance, the sheet is a <strong>late claim</strong> and is paid with the <strong>next</strong> payroll. You are notified. Nothing is lost; it is only paid later.</li>
+    <li>If you submit when the cut-off has already passed, the application warns you straight away.</li>
+  </ul>
+</section>
+
+<section class="card docs" id="faq">
+  <h2>Questions &amp; problems</h2>
+  <dl class="faq">
+    <dt>I cannot see an Overtime menu.</dt>
+    <dd>Experts do not declare overtime. If you are not an Expert and the menu is missing, ask an administrator to check your profile.</dd>
+    <dt>"Weekend/holiday overtime must be on an on-call day or pre-approved."</dt>
+    <dd>Either book that day on your on-call sheet, or tick <em>pre-approved</em> on the entry once your manager has agreed to the work.</dd>
+    <dt>I cannot add overtime for a month: "withdraw it first".</dt>
+    <dd>That month's sheet is submitted and waiting. Withdraw it, add your entry, and submit again.</dd>
+    <dt>My time is refused.</dt>
+    <dd>Times use {{ step }}-minute steps, the end must differ from the start, the entry must not overlap another of yours, and the date cannot be in the future or more than {{ settings.overtime_lookback_months }} months back.</dd>
+    <dt>The days of the other month are missing after I switched on a week.</dt>
+    <dd>That other month's sheet was already submitted or approved, so the days were skipped (you were warned). Withdraw that sheet or ask your manager.</dd>
+    <dt>My sheet was approved but contains a mistake.</dt>
+    <dd>Tell your manager. An administrator can reopen the latest sheet of the month, unless it has already been sent to Finance. For a month already sent, an overtime correction can be filed as supplementary overtime; for anything else, ask your manager.</dd>
+    <dt>I do not see any amounts.</dt>
+    <dd>Your organisation may hide money amounts from employees. Hours and time in lieu are always shown.</dd>
+    <dt>My manager is away.</dt>
+    <dd>Any manager above yours in the hierarchy, or an administrator, can approve your sheet; ask them.</dd>
+  </dl>
+  <p class="help">Anything else: contact your line manager or the application administrators.</p>
+</section>
+
+</div>
+</div>
+{% endblock %}

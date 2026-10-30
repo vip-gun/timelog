@@ -14,7 +14,8 @@
   <label>Display name <input name="display_name" value="{{ u.display_name if u else '' }}"></label>
   <label>E-mail <input type="email" name="email" value="{{ u.email if u else '' }}"></label>
   <label>Employee ID <input name="employee_id" value="{{ u.employee_id if u else '' }}"></label>
-  <label>Team <input name="team" value="{{ u.team if u else '' }}"></label>
+  <label>Team <input name="team" value="{{ u.team if u else '' }}" list="team-list" autocomplete="off" placeholder="Pick a team or type a new one"></label>
+  <datalist id="team-list">{% for t in teams %}<option value="{{ t }}">{% endfor %}</datalist>
   <label>Line manager
     <select name="manager_id">
       <option value="">— none —</option>
@@ -31,7 +32,7 @@
   <label class="check"><input type="checkbox" name="is_expert" value="1" {% if u and u.is_expert %}checked{% endif %}> Expert (no overtime; on-call interventions double the daily rate)</label>
   <label class="check"><input type="checkbox" name="is_procurement" value="1" {% if u and u.is_procurement %}checked{% endif %}> IT Procurement (downloads the payroll reports for the whole organisation and records that they were sent to Finance)</label>
   <label class="check"><input type="checkbox" name="is_admin" value="1" {% if u and u.is_admin %}checked{% endif %}> Administrator</label>
-  <label class="check"><input type="checkbox" name="is_active" value="1" {% if not u or u.is_active %}checked{% endif %}> Active</label>
+  <label class="check"><input type="checkbox" name="is_active" value="1" {% if not u or u.is_active %}checked{% endif %} {% if u and u.is_archived %}disabled{% endif %}> Active{% if u and u.is_archived %} (archived: restore the user first){% endif %}</label>
   {% if not u or u.auth_source == "local" %}
   <label class="span-2">{{ "New password (leave empty to keep)" if u else "Password" }} <input type="password" name="password" autocomplete="new-password" minlength="10" {% if not u %}required{% endif %}></label>
   {% else %}
@@ -42,4 +43,27 @@
     <button class="btn btn-primary">Save</button>
   </div>
 </form>
+{% if u and u.id != user.id %}
+<div class="card">
+  <h2>{{ "Archived user" if u.is_archived else "Archive or delete" }}</h2>
+  {% if u.is_archived %}
+  <p class="help">This user is archived: sign-in is disabled, the account is hidden from the user list, and every sheet, payroll record and audit entry is kept.</p>
+  <form method="post" action="/admin/users/{{ u.id }}/unarchive" class="actions">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <button class="btn btn-primary">Restore user</button>
+  </form>
+  {% else %}
+  <p class="help"><strong>Archive</strong> (recommended for anyone who has left): disables sign-in and hides the user from the list; all sheets, payroll records and audit history stay intact, and the user can be restored. Direct reports keep this manager until you reassign them.</p>
+  <form method="post" action="/admin/users/{{ u.id }}/archive" class="actions" data-confirm="Archive {{ u.username }}? Sign-in is disabled; records are kept.">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <button class="btn btn-ghost">Archive {{ u.username }}</button>
+  </form>
+  {% endif %}
+  <p class="help"><strong>Delete</strong> removes the account and its draft, submitted and rejected sheets, signatures and notices for good; direct reports are left without a manager. Users with approved sheets or a recorded payroll run cannot be deleted: archive them. Deletions are written to the audit log.</p>
+  <form method="post" action="/admin/users/{{ u.id }}/delete" class="actions" data-confirm="Permanently delete {{ u.username }} and their draft, submitted and rejected sheets? This cannot be undone.">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <button class="btn btn-danger">Delete {{ u.username }}</button>
+  </form>
+</div>
+{% endif %}
 {% endblock %}
