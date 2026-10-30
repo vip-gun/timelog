@@ -1,5 +1,6 @@
 import calendar
 import datetime as dt
+import re
 from typing import Iterable, List, Set, Tuple
 
 from sqlalchemy import select
@@ -73,14 +74,20 @@ def fmt_minutes(m: int) -> str:
     return f"{m // 60:02d}:{m % 60:02d}"
 
 
+_TIME_RE = re.compile(r"^(\d{1,2})(?:[:.hH]?(\d{2}))?$")
+
+
 def parse_hhmm(value: str) -> int:
-    """Parse 'HH:MM' into minutes since midnight. '24:00' is accepted (end of day)."""
-    value = (value or "").strip()
-    try:
-        h_str, m_str = value.split(":")[:2]
-        h, m = int(h_str), int(m_str)
-    except ValueError:
-        raise ValueError(f"Invalid time '{value}' (expected HH:MM).")
+    """Parse a typed time into minutes since midnight: 'HH:MM', 'H:MM', '8.45', '8h45', '0845', '8' (= 8:00).
+
+    '24:00' is accepted (end of day)."""
+    text = (value or "").strip()
+    m_ = _TIME_RE.match(text) if len(text) <= 5 else None
+    if m_ is None:
+        raise ValueError(f"Invalid time '{text}' (expected HH:MM, for example 08:45).")
+    if m_.group(2) is None and len(m_.group(1)) > 2:
+        raise ValueError(f"Invalid time '{text}' (expected HH:MM, for example 08:45).")
+    h, m = int(m_.group(1)), int(m_.group(2) or 0)
     if not (0 <= m < 60) or not (0 <= h <= 24) or (h == 24 and m != 0):
-        raise ValueError(f"Invalid time '{value}'.")
+        raise ValueError(f"Invalid time '{text}'.")
     return h * 60 + m

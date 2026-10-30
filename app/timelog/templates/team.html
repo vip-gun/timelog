@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 {% from "_macros.html" import status_badge, empty_state %}
-{% block title %}Team {{ month_label(year, month) }}{% endblock %}
+{% block title %}Statistics {{ month_label(year, month) }}{% endblock %}
 {% block content %}
 {% set p = shift_month(year, month, -1) %}{% set n = shift_month(year, month, 1) %}
 {% set q = "&team=" ~ (team|urlencode) if team else "" %}
 <div class="page-head">
-  <div><span class="eyebrow">Team overview &amp; payroll export</span><h1>My team</h1></div>
+  <div><span class="eyebrow">Team overview</span><h1>Statistics</h1></div>
   <div class="month-nav">
     <a class="btn btn-ghost btn-icon" href="/team?year={{ p[0] }}&month={{ p[1] }}{{ q }}" aria-label="Previous month">&larr;</a>
     <span class="current">{{ month_label(year, month) }}</span>
@@ -30,9 +30,7 @@
       </select>
     </label>
   </form>
-  <a class="btn btn-primary" href="/team/export?year={{ year }}&month={{ month }}{{ q }}">⤓ Export payroll {{ month_label(year, month) }} (.xlsx)</a>
 </section>
-<p class="help">The export contains every <strong>approved</strong> sheet paid in payroll period {{ month_label(year, month) }}: work done this month (approved by the {{ settings.payroll_cutoff_day }}th of next month) plus late claims for earlier months approved after their cut-off.</p>
 
 <h2>Work done in {{ month_label(year, month) }}</h2>
 {% set til = features.til or (rows|selectattr("ot")|map(attribute="ot.til_hours")|select|list|length > 0) %}

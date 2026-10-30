@@ -19,7 +19,7 @@
       <td>{{ u.manager.full_name if u.manager else "—" }}{% if u.manager_locked %} 🔒{% endif %}</td>
       <td>{{ u.grade.code if u.grade else "default" }}</td>
       <td>{{ u.auth_source }}</td>
-      <td>{% if u.is_admin %}<span class="tag">Admin</span>{% endif %}{% if u.is_expert %}<span class="tag">Expert</span>{% endif %}{% if not u.is_active %}<span class="tag">Inactive</span>{% endif %}</td>
+      <td>{% if u.is_admin %}<span class="tag">Admin</span>{% endif %}{% if u.is_expert %}<span class="tag">Expert</span>{% endif %}{% if u.is_procurement %}<span class="tag">Procurement</span>{% endif %}{% if not u.is_active %}<span class="tag">Inactive</span>{% endif %}</td>
       <td>{{ u.last_login_at|datetime }}</td>
     </tr>
   {% endfor %}

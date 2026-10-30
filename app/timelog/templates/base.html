@@ -33,10 +33,11 @@
     {% if not user.is_expert %}<a href="/overtime" class="{{ 'active' if path.startswith('/overtime') }}">Overtime</a>{% endif %}
     {% if is_manager or user.is_admin %}
       <a href="/approvals" class="{{ 'active' if path.startswith('/approvals') }}">Approvals</a>
-      <a href="/team" class="{{ 'active' if path.startswith('/team') }}">Team &amp; Export</a>
+      <a href="/team" class="{{ 'active' if path.startswith('/team') }}">Statistics</a>
     {% endif %}
-    {% if user.is_admin %}<a href="/admin/users" class="{{ 'active' if path.startswith('/admin') }}">Admin</a>{% endif %}
+    {% if user.is_procurement or user.is_admin %}<a href="/payroll" class="{{ 'active' if path.startswith('/payroll') }}">Payroll</a>{% endif %}
   </nav>
+  {% if user.is_admin %}<a class="admin-link {{ 'active' if path.startswith('/admin') }}" href="/admin/users">Admin</a>{% endif %}
   <div class="who">
     <span class="avatar" title="{{ user.full_name }}">{{ (user.first_name[:1] ~ user.last_name[:1]) | upper or user.username[:2] | upper }}</span>
     <span class="name">{{ user.full_name }}{% if user.is_expert %} <span class="tag">Expert</span>{% endif %}{% if user.is_admin %} <span class="tag">Admin</span>{% endif %}</span>
@@ -48,6 +49,15 @@
 </header>
 {% endif %}
 <main class="container page">
+  {% for n in notices %}
+  <div class="banner {{ 'banner-error' if n.kind == 'late' else 'banner-info' }} notice" role="status">
+    <span>{{ n.message }}</span>
+    <form method="post" action="/notices/{{ n.id }}/read" class="inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="back" value="{{ request.url.path }}">
+      <button class="btn btn-ghost btn-sm">Dismiss</button>
+    </form>
+  </div>
+  {% endfor %}
   {% block content %}{% endblock %}
 </main>
 {% include "_footer.html" %}

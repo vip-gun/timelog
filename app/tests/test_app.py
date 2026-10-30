@@ -63,10 +63,10 @@ def test_oncall_expert_flow_and_approval(browser, db, users):
     db.refresh(sheet)
     assert len(sheet.oncall_days) == 3
 
-    # Upper manager can view but not approve; direct manager approves
+    # A peer cannot approve; the upper manager can view (and, skip-level, approve: see test_skip_level_approval)
     head = browser("head")
     assert head.get(f"/oncall/2026/8?user_id={users['bob'].id}").status_code == 200
-    head.post(f"/sheets/{sheet.id}/decide", {"action": "approve"})
+    browser("carol").post(f"/sheets/{sheet.id}/decide", {"action": "approve"})
     db.refresh(sheet)
     assert sheet.status == "submitted"
     mgr = browser("manager")
@@ -112,14 +112,17 @@ def test_overtime_split_night_and_weekend_rule(browser, db, users):
     assert len(_overtime_sheets(db, users["alice"])[0].overtime_entries) == 2
 
 
-def test_overtime_30_minute_steps(browser, db, users):
+def test_overtime_15_minute_steps_and_typed_times(browser, db, users):
     alice = browser("alice")
-    alice.post("/overtime/entries", _ot("2026-08-10", "18:15", "19:00"))
-    alice.post("/overtime/entries", _ot("2026-08-10", "18:00", "18:15"))
+    alice.post("/overtime/entries", _ot("2026-08-10", "18:10", "19:00"))   # not a multiple of 15 minutes
+    alice.post("/overtime/entries", _ot("2026-08-10", "18:00", "18:20"))
     assert _overtime_sheets(db, users["alice"]) == []
-    alice.post("/overtime/entries", _ot("2026-08-10", "18:00", "18:30"))
+    alice.post("/overtime/entries", _ot("2026-08-10", "18:00", "18:15"))   # 15 minutes is the minimum
+    alice.post("/overtime/entries", _ot("2026-08-10", "8.45", "9h30"))     # typed in other notations
+    alice.post("/overtime/entries", _ot("2026-08-10", "1000", "11"))
     sheet = _overtime_sheets(db, users["alice"])[0]
-    assert [float(e.hours) for e in sheet.overtime_entries] == [0.5]
+    assert sorted(float(e.hours) for e in sheet.overtime_entries) == [0.25, 0.75, 1.0]
+    assert sorted(e.start_minute for e in sheet.overtime_entries) == [8 * 60 + 45, 10 * 60, 18 * 60]
 
 
 def test_overtime_not_in_future(browser, db, users):
@@ -148,7 +151,7 @@ def test_late_claim_creates_supplementary_sheet(browser, db, users):
     assert supp.status == "approved" and supp.is_late  # approved months after August's cut-off
 
     # it is exported in its payroll period, flagged as late claim
-    r = mgr.get(f"/team/export?year={supp.payroll_year}&month={supp.payroll_month}")
+    r = browser("admin").get(f"/payroll/export/control?year={supp.payroll_year}&month={supp.payroll_month}")
     rows = [row for row in load_workbook(io.BytesIO(r.content))["Overtime Payroll"].iter_rows(min_row=2, values_only=True)
             if row[2] == "Alice"]
     assert any(row[4] == "2026-08" and "Late claim" in row[5] and row[10] == 1.0 for row in rows)
@@ -169,7 +172,7 @@ def test_export_contains_only_approved_scope(browser, db, users):
     period = db.get(Sheet, ot.id)
     year, month = period.payroll_year, period.payroll_month
 
-    r = mgr.get(f"/team/export?year={year}&month={month}")
+    r = browser("admin").get(f"/payroll/export/control?year={year}&month={month}")
     assert r.status_code == 200
     wb = load_workbook(io.BytesIO(r.content))
     oncall_names = [row[2] for row in wb["On-Call"].iter_rows(min_row=2, values_only=True) if row[2]]
@@ -177,8 +180,9 @@ def test_export_contains_only_approved_scope(browser, db, users):
     payroll = [row for row in wb["Overtime Payroll"].iter_rows(min_row=2, values_only=True) if row[2] == "Alice"][0]
     assert payroll[8] == 3.0 and payroll[12] == 3.0 and payroll[15] == 3.0  # Sun hours, HL100, HL130
 
-    assert browser("alice").get(f"/team/export?year={year}&month={month}").status_code == 404
-    head_wb = load_workbook(io.BytesIO(browser("head").get("/team/export?year=2026&month=8").content))
+    assert browser("alice").get(f"/payroll/export/control?year={year}&month={month}").status_code == 404
+    assert mgr.get(f"/payroll/export/control?year={year}&month={month}").status_code == 404   # exports belong to IT Procurement / admin
+    head_wb = load_workbook(io.BytesIO(browser("admin").get("/payroll/export/control?year=2026&month=8").content))
     summary_names = {row[2] for row in head_wb["Summary"].iter_rows(min_row=7, values_only=True)}
     assert {"Dave", "Alice", "Carol"} <= summary_names
 

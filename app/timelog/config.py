@@ -42,10 +42,10 @@ class Settings:
     night_start: int = 22 * 60
     night_end: int = 6 * 60
     # Overtime granularity (minutes) and how far back employees may declare overtime
-    overtime_step_minutes: int = 30
+    overtime_step_minutes: int = 15
     overtime_lookback_months: int = 12
     # Approvals up to this day of month M+1 go to payroll period M; later ones to the next period
-    payroll_cutoff_day: int = 10
+    payroll_cutoff_day: int = 5
     # On-call rotation week start (0=Monday ... 4=Friday): weeks run Friday -> Thursday by default
     oncall_week_start: int = 4
 
@@ -82,6 +82,7 @@ class Settings:
     ldap_group_required: str = ""
     ldap_group_admin: str = ""
     ldap_group_expert: str = ""
+    ldap_group_procurement: str = ""
     ldap_timeout: int = 10
 
     # SMTP notifications (optional)
@@ -112,9 +113,9 @@ class Settings:
             currency=_str("CURRENCY", "EUR"),
             night_start=cls._hhmm(_str("NIGHT_START"), 22 * 60),
             night_end=cls._hhmm(_str("NIGHT_END"), 6 * 60),
-            overtime_step_minutes=_int("OVERTIME_STEP_MINUTES", 30),
+            overtime_step_minutes=_int("OVERTIME_STEP_MINUTES", 15),
             overtime_lookback_months=_int("OVERTIME_LOOKBACK_MONTHS", 12),
-            payroll_cutoff_day=_int("PAYROLL_CUTOFF_DAY", 10),
+            payroll_cutoff_day=_int("PAYROLL_CUTOFF_DAY", 5),
             oncall_week_start=_weekday("ONCALL_WEEK_START", 4),
             backup_dir=_str("BACKUP_DIR", "./backups"),
             backup_passphrase=os.environ.get("BACKUP_PASSPHRASE", ""),
@@ -143,6 +144,7 @@ class Settings:
             ldap_group_required=_str("LDAP_GROUP_REQUIRED"),
             ldap_group_admin=_str("LDAP_GROUP_ADMIN"),
             ldap_group_expert=_str("LDAP_GROUP_EXPERT"),
+            ldap_group_procurement=_str("LDAP_GROUP_PROCUREMENT"),
             ldap_timeout=_int("LDAP_TIMEOUT", 10),
             smtp_host=_str("SMTP_HOST"),
             smtp_port=_int("SMTP_PORT", 25),

@@ -32,7 +32,7 @@ def _sheets(db, user, kind):
 
 
 def test_version_and_tab_title(browser, users):
-    assert __version__ == "1.4.0"
+    assert __version__ == "1.7.0"
     assert "<title>Timelog - Dashboard</title>" in browser("alice").get("/").text
     assert "<title>Timelog - Sign In</title>" in browser().get("/login").text
 
@@ -57,7 +57,7 @@ def test_til_disabled_hides_and_refuses(browser, db, users):
     browser("manager").post(f"/sheets/{sheet.id}/decide", {"action": "approve"})
     db.expire_all()
     s = db.get(Sheet, sheet.id)
-    wb = load_workbook(io.BytesIO(browser("manager").get(f"/team/export?year={s.payroll_year}&month={s.payroll_month}").content))
+    wb = load_workbook(io.BytesIO(browser("admin").get(f"/payroll/export/control?year={s.payroll_year}&month={s.payroll_month}").content))
     headers = [c.value for c in wb["Overtime Payroll"][1]]
     assert "TIL credit (no payment)" not in headers and headers[-1] == "Signed (UTC)"
 
@@ -134,7 +134,7 @@ def test_signature_on_overtime_and_resubmission(browser, db, users):
     mgr.post(f"/sheets/{sheet.id}/decide", {"action": "approve"})
     s = _sheets(db, users["alice"], "overtime")[0]
     assert s.status == "approved" and verify(s)
-    wb = load_workbook(io.BytesIO(mgr.get(f"/team/export?year={s.payroll_year}&month={s.payroll_month}").content))
+    wb = load_workbook(io.BytesIO(browser("admin").get(f"/payroll/export/control?year={s.payroll_year}&month={s.payroll_month}").content))
     row = [r for r in wb["Overtime Payroll"].iter_rows(min_row=2, values_only=True) if r[2] == "Alice"][0]
     assert row[-1]  # signed timestamp exported
 

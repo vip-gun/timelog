@@ -128,6 +128,22 @@ def current_user(request: Request, db: Session = Depends(get_db)) -> User:
     request.state.user = user
     request.state.is_manager = is_manager(db, user)
     request.state.features = features(db)
+    from sqlalchemy import select
+
+    from .config import get_settings
+    from .app_settings import payroll_cutoff
+    from .models import Notification
+
+    request.state.payroll_cutoff = payroll_cutoff(db, get_settings())
+    request.state.notices = list(db.scalars(select(Notification).where(
+        Notification.user_id == user.id, Notification.read_at.is_(None)).order_by(Notification.id.desc()).limit(6)))
+    return user
+
+
+def payroll_user(user: User = Depends(current_user)) -> User:
+    """IT Procurement (or an administrator): payroll reports and the "sent to Finance" record."""
+    if not (user.is_procurement or user.is_admin):
+        raise HTTPException(status_code=404, detail="Not found")
     return user
 
 

@@ -48,17 +48,23 @@ def validate_step(minute: int, step: int) -> None:
         raise ValueError(f"Overtime is recorded in {step}-minute steps: times must end in {marks}.")
 
 
-def payroll_period(work_year: int, work_month: int, approved: dt.date, cutoff_day: int) -> Tuple[int, int]:
+def payroll_period(work_year: int, work_month: int, approved: dt.date, cutoff_day: int,
+                   closed: Iterable[Tuple[int, int]] = ()) -> Tuple[int, int]:
     """Payroll month of a sheet approved on `approved`.
 
-    Approvals up to `cutoff_day` of month X+1 are paid with month X; later approvals with the
-    approval month. Never earlier than the month the work was done. Late claims (e.g. August
-    overtime approved on 20 October) therefore land in the next payroll export that is still open.
+    Approvals up to `cutoff_day` of month X+1 are paid with month X; later approvals with the approval month. Never
+    earlier than the month the work was done. A period already sent to Finance (`closed`) accepts nothing more: the
+    sheet moves on to the next period. Late claims (e.g. August overtime approved on 20 October) therefore land in the
+    next payroll export that is still open.
     """
     y, m = approved.year, approved.month
     if approved.day <= cutoff_day:
         y, m = (y, m - 1) if m > 1 else (y - 1, 12)
-    return max((y, m), (work_year, work_month))
+    period = max((y, m), (work_year, work_month))
+    closed = set(closed)
+    while period in closed:
+        period = (period[0], period[1] + 1) if period[1] < 12 else (period[0] + 1, 1)
+    return period
 
 
 @dataclass

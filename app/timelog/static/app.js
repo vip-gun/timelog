@@ -154,6 +154,16 @@
     syncWeekday();
   }
 
+  // Typed times: "845", "8.45", "8h45" or "8" become HH:MM when the field loses focus.
+  document.querySelectorAll("input.js-time").forEach(function (input) {
+    input.addEventListener("blur", function () {
+      var m = /^(\d{1,2})(?:[:.hH]?(\d{2}))?$/.exec(input.value.trim());
+      if (m && (m[2] !== undefined || m[1].length <= 2)) {
+        input.value = ("0" + m[1]).slice(-2) + ":" + (m[2] || "00");
+      }
+    });
+  });
+
   // Overtime form: tell the user when the chosen date is one of their on-call days (detected server-side too).
   var otForm = document.getElementById("ot-form");
   if (otForm) {

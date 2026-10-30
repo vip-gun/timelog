@@ -29,6 +29,7 @@ certs/*
 /templates/
 # Source spreadsheets contain real employee names; exports contain pay data.
 *.xlsx
+!app/timelog/export_templates/*.xlsx
 *.xlsm
 *.xls
 *.csv

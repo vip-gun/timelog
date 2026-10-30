@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from .config import Settings
 from .models import (
-    SETTING_DEFAULTS, SETTING_ONCALL_HANDOVER, SETTING_ONCALL_WEEK_START, SETTING_SHOW_AMOUNTS, SETTING_SIGNATURE_REQUIRED, SETTING_TIL_ENABLED, AppSetting, User,
+    SETTING_DEFAULTS, SETTING_ONCALL_HANDOVER, SETTING_ONCALL_WEEK_START, SETTING_PAYROLL_CUTOFF, SETTING_SHOW_AMOUNTS, SETTING_SIGNATURE_REQUIRED, SETTING_TIL_ENABLED, AppSetting, User,
 )
 
 LDAP_PREFIX = "ldap."
@@ -41,6 +41,7 @@ LDAP_FIELDS = {
     "ldap_group_required": str,
     "ldap_group_admin": str,
     "ldap_group_expert": str,
+    "ldap_group_procurement": str,
     "ldap_timeout": int,
 }
 SECRET_FIELDS = {"ldap_bind_password"}
@@ -77,6 +78,12 @@ def oncall_week(db: Session, base: Settings):
     raw = get_setting(db, SETTING_ONCALL_WEEK_START)
     day = int(raw) if raw.isdigit() and 0 <= int(raw) <= 6 else base.oncall_week_start
     return day, get_setting(db, SETTING_ONCALL_HANDOVER)
+
+
+def payroll_cutoff(db: Session, base: Settings) -> int:
+    """Finance cut-off day of the following month: Admin > Settings, else the PAYROLL_CUTOFF_DAY env value."""
+    raw = get_setting(db, SETTING_PAYROLL_CUTOFF)
+    return int(raw) if raw.isdigit() and 1 <= int(raw) <= 28 else base.payroll_cutoff_day
 
 
 def can_see_amounts(db: Session, viewer: User, target: User) -> bool:

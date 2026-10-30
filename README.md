@@ -6,6 +6,18 @@ This web app handles on-call and overtime declarations, their validation and the
 
 Business rules and design decisions are in [CLAUDE.md](CLAUDE.md).
 
+## Screenshots
+Demo data (fictional users); the interface is the same in production.
+
+| | |
+|---|---|
+| **Dashboard**: month status, on-call stipend, overtime logged | **On-call**: rotation weeks with a week switch, day types and rates |
+| ![Dashboard](docs/screenshots/dashboard.png) | ![On-call](docs/screenshots/oncall.png) |
+| **Overtime**: 15-minute entries, day/night hours, paid or time in lieu | **Approvals**: line managers validate direct and skip-level reports |
+| ![Overtime](docs/screenshots/overtime.png) | ![Approvals](docs/screenshots/approvals.png) |
+| **Statistics**: team status, totals and late claims | **Payroll**: reports for Finance and the sent-to-Finance record |
+| ![Statistics](docs/screenshots/statistics.png) | ![Payroll](docs/screenshots/payroll.png) |
+
 ## Stack
 The app runs as three containers (Docker Compose). Only `proxy` publishes ports.
 
@@ -143,24 +155,27 @@ After LDAP works, set `LOCAL_LOGIN_ADMIN_ONLY=true`. This keeps only the local b
 ## Using the app
 | Role | What they can do |
 |---|---|
-| Employee | **On-call** grid per month: book a whole rotation week (Friday → Thursday) with the week switch, or tick individual days, then "intervention" and incident # / comment. **Overtime** entries: date, from/to in 30-minute steps, PAID or TIL. Then *Submit for validation*. Overtime can be logged for previous months, up to 12 months back. If that month is already approved, a supplementary sheet (late claim) is created. |
+| Employee | **On-call** grid per month: book a whole rotation week (Friday → Thursday) with the week switch, or tick individual days, then "intervention" and incident # / comment. **Overtime** entries: date, from/to typed or picked in 15-minute steps, PAID or TIL; the sheet shows hours by day type, split into day and night hours. Then *Submit for validation*. Overtime can be logged for previous months, up to 12 months back. If that month is already approved, a supplementary sheet (late claim) is created. |
 | Signature | If the administrator enables it (Admin › Settings), employees draw a signature and confirm a statement when submitting; managers see it with an integrity check. |
 | Employee (cont.) | When called during on-call duty, log the intervention (hours, incident #, description) on the **overtime** sheet only. Entries on on-call days are recognised automatically. |
 | Expert | On-call only. An intervention doubles that day's on-call rate. No overtime. |
-| Line manager | **Approvals**: approve, or reject with a comment, the sheets of direct reports. **Team & export**: status of everyone below them, and the `.xlsx` export of approved sheets. |
+| Line manager | **Approvals**: approve, or reject with a comment, the sheets of direct reports and (skip-level) of everyone below them. **Statistics**: status and totals of everyone below them. |
+| IT Procurement | **Payroll**: downloads the on-call and overtime reports of the whole organisation (work month + everything validated late), and **records that they were sent to Finance**. That closes the payroll period: anything approved afterwards is paid the following month and the employee is notified. Cannot see individual declarations. |
 | Admin | Users (manager, grade, Expert/Admin flags, local accounts), grades and on-call rates, legal holidays (with `.ics` import), TIL factors, settings (e.g. hide on-call amounts from employees), audit log. Can reopen an approved sheet. |
 
 Colleagues never see each other's declarations. Managers see only the people below them in the hierarchy.
 
-### Export content (`IT_OnCall_Overtime_YYYYMM.xlsx`)
-The export is per **payroll period**. Sheets approved by the `PAYROLL_CUTOFF_DAY` (default the 10th) of the following month
-are paid with their work month. Anything approved later (including late claims for earlier months) goes into the next open
-payroll period and is shaded and labelled "Late claim".
-- **Summary**: status of every person in scope, so missing or pending sheets are visible.
-- **On-Call**: day counts W/Sat/Sun/H, Expert interventions, amount.
-- **On-Call Grid**: one row per person and one column per day, with an extra "– Incidents/calls" row for Experts.
-- **Overtime Payroll**: hours by day type, night hours, HL100 / HL101 / HL111 / HL130 / HL121, TIL hours and TIL credit.
-- **Overtime Detail** and **On-Call Detail**: line by line.
+### Exports for Finance
+Under **Payroll**, IT Procurement (and admins) download, for a **payroll period** and for the whole organisation:
+- the **on-call sheet** `Y<yy>M<mm>_IT_OnCall.xlsx` and the **overtime sheet** `Y<yy>M<mm>_IT_Overtime.xlsx`, laid out like the
+  sheets Finance works with (one tab per work month; late claims, approved after their cut-off, get their own tab "… (late)"),
+  with the values computed by the application (no formulas);
+- a **detailed control export** (`IT_OnCall_Overtime_YYYYMM.xlsx`): Summary (status of every person), On-Call, On-Call Grid,
+  Overtime Payroll (hours by day type, night hours, HL100 / HL101 / HL111 / HL130 / HL121, TIL), and line-by-line detail tabs.
+
+Sheets approved by the Finance cut-off (`PAYROLL_CUTOFF_DAY`, default **the 5th** of the following month, editable in Admin >
+Settings) are paid with their work month; anything approved later, or after IT Procurement recorded the period as sent, goes
+into the next open payroll period and is labelled "Late claim". Employees are notified when their payment moves.
 
 ## Operations
 - Backup: **Admin › Backup** sets the schedule (daily or weekly, UTC) and creates, downloads, uploads and restores

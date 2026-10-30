@@ -78,6 +78,8 @@ class User(Base):
 
     is_expert: Mapped[bool] = mapped_column(Boolean, default=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    # IT Procurement: downloads the payroll reports (whole organisation) and records that they were sent to Finance
+    is_procurement: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
@@ -150,6 +152,7 @@ class Sheet(Base):
 
     user: Mapped[User] = relationship(foreign_keys=[user_id])
     decided_by: Mapped[Optional[User]] = relationship(foreign_keys=[decided_by_id])
+    payroll_item: Mapped[Optional["PayrollRunItem"]] = relationship(back_populates="sheet", uselist=False)
     oncall_days: Mapped[List["OnCallDay"]] = relationship(
         back_populates="sheet", cascade="all, delete-orphan", order_by="OnCallDay.date"
     )
@@ -174,6 +177,11 @@ class Sheet(Base):
             return None
         latest = self.signatures[-1]
         return latest if self.submitted_at is None or latest.signed_at >= self.submitted_at else None
+
+    @property
+    def sent_at(self) -> Optional[dt.datetime]:
+        """When the payroll run containing this sheet was sent to Finance (None = not sent yet)."""
+        return self.payroll_item.run.sent_at if self.payroll_item is not None else None
 
     @property
     def is_late(self) -> bool:
@@ -261,9 +269,56 @@ class AppSetting(Base):
 SETTING_SHOW_AMOUNTS = "show_amounts_to_employees"
 SETTING_TIL_ENABLED = "til_enabled"  # time in lieu as an overtime compensation option
 SETTING_SIGNATURE_REQUIRED = "signature_required"  # employees sign when submitting a sheet
+SETTING_PAYROLL_CUTOFF = "payroll_cutoff_day"  # Finance cut-off: day of the following month (env default: 5)
 SETTING_ONCALL_WEEK_START = "oncall_week_start"  # weekday 0-6 the on-call rotation starts on (env default: Friday)
 SETTING_ONCALL_HANDOVER = "oncall_handover"  # HH:MM of the handover, shown to employees (days are booked whole)
 SETTING_DEFAULTS = {SETTING_ONCALL_HANDOVER: "18:00", SETTING_SHOW_AMOUNTS: "1", SETTING_TIL_ENABLED: "1", SETTING_SIGNATURE_REQUIRED: "0"}
+
+
+class PayrollRun(Base):
+    """The approved sheets of one payroll period were sent to Finance for payment (recorded by IT Procurement).
+
+    Recording it closes the period: sheets approved afterwards are paid with the next period."""
+
+    __tablename__ = "payroll_runs"
+    __table_args__ = (UniqueConstraint("year", "month"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    year: Mapped[int] = mapped_column(Integer)
+    month: Mapped[int] = mapped_column(Integer)
+    sent_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    sent_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    note: Mapped[str] = mapped_column(String(500), default="")
+    oncall_sheets: Mapped[int] = mapped_column(Integer, default=0)
+    overtime_sheets: Mapped[int] = mapped_column(Integer, default=0)
+    employees: Mapped[int] = mapped_column(Integer, default=0)
+
+    sent_by: Mapped["User"] = relationship()
+    items: Mapped[List["PayrollRunItem"]] = relationship(back_populates="run", cascade="all, delete-orphan")
+
+
+class PayrollRunItem(Base):
+    __tablename__ = "payroll_run_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("payroll_runs.id", ondelete="CASCADE"), index=True)
+    sheet_id: Mapped[int] = mapped_column(ForeignKey("sheets.id"), unique=True)
+
+    run: Mapped[PayrollRun] = relationship(back_populates="items")
+    sheet: Mapped[Sheet] = relationship(back_populates="payroll_item")
+
+
+class Notification(Base):
+    """In-app message for a user (shown until dismissed), e.g. "your payment moves to next month"."""
+
+    __tablename__ = "notifications"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    kind: Mapped[str] = mapped_column(String(32), default="info")   # info | late
+    message: Mapped[str] = mapped_column(Text)
+    read_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)
 
 
 class AuditLog(Base):

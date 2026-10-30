@@ -7,9 +7,9 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from .. import calc, workflow
-from ..access import can_export
+from ..access import can_view_team
 from ..db import get_db
-from ..export import build_export, late_claims_pending, payroll_sheets, scope_users, work_month_sheets
+from ..export import late_claims_pending, payroll_sheets, scope_users, work_month_sheets
 from ..models import KIND_ONCALL, KIND_OVERTIME, User
 from ..security import current_user
 from ..web import render
@@ -19,7 +19,7 @@ router = APIRouter(prefix="/team")
 
 
 def _require_manager(db: Session, me: User) -> None:
-    if not can_export(db, me):
+    if not can_view_team(db, me):
         raise HTTPException(status_code=404, detail="Not found")
 
 
@@ -58,19 +58,3 @@ def overview(request: Request, year: Optional[int] = None, month: Optional[int] 
         "year": year, "month": month, "team": team, "teams": teams, "rows": rows, "totals": totals,
         "late": late, "pending_late": pending_late, "paid_count": len(paid),
     })
-
-
-@router.get("/export")
-def export(year: int, month: int, team: str = "", me: User = Depends(current_user), db: Session = Depends(get_db)):
-    _require_manager(db, me)
-    check_month(year, month)
-    data = build_export(db, me, year, month, team)
-    workflow.audit(db, me, "export", "period", None, period=f"{year}-{month:02d}", team=team)
-    db.commit()
-    suffix = f"_{''.join(ch for ch in team if ch.isalnum())}" if team else ""
-    filename = f"IT_OnCall_Overtime_{year}{month:02d}{suffix}.xlsx"
-    return Response(
-        content=data,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )

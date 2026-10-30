@@ -45,6 +45,7 @@ def view(request: Request, year: int, month: int, user_id: Optional[int] = None,
     return render(request, "overtime.html", {
         "year": year, "month": month, "target": target, "own": own, "blocks": blocks,
         "holidays": holiday_names(db, start, end),
+        "factors": {code: (f"{float(day):g}", f"{float(night):g}") for code, (day, night) in workflow.til_factors(db).items()},
         "oncall_dates": workflow.oncall_dates(db, target, start, end),
         # on-call days within the declarable window, for the "on-call day detected" hint of the form
         "window_oncall": sorted(d.isoformat() for d in workflow.oncall_dates(db, target, first, last)) if own else [],
@@ -92,6 +93,9 @@ def add_entry(request: Request,
         flash(request, "Entry crosses midnight: it was split into one entry per calendar day.", "info")
     else:
         flash(request, "Overtime entry added.", "success")
+    text, late = workflow.timing_message(db, get_settings(), day.year, day.month)
+    if late:
+        flash(request, text, "info")
     return redirect(url)
 
 

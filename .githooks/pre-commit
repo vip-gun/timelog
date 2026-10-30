@@ -11,7 +11,7 @@ staged=$(git diff --cached --name-only --diff-filter=ACMR)
 # 1. Forbidden file types / locations
 for f in $staged; do
   case "$f" in
-    .env.example|certs/README.md|app/tests/fixtures/*) ;;
+    .env.example|certs/README.md|app/tests/fixtures/*|app/timelog/export_templates/*.xlsx) ;;
     .env|.env.*|*.key|*.pem|*.crt|*.cer|*.csr|*.p12|*.pfx|*.jks|certs/*|\
     templates/*|*.xlsx|*.xlsm|*.xls|*.csv|*.db|*.sqlite|*.sqlite3|*.sql|*.sql.gz|*.dump|backups/*)
       echo "pre-commit: refusing sensitive file: $f" >&2; fail=1 ;;

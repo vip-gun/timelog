@@ -152,6 +152,7 @@ async def save(request: Request, year: int, month: int, background: BackgroundTa
             submitted = workflow.submit_month(db, s, me, year, month, str(form.get("employee_comment", "")), signature)
             if signature is not None and form.get("save_signature"):
                 save_signature_picture(db, me, signature.png)
+            timing = workflow.warn_payroll_timing(db, s, submitted)
             db.commit()
     except workflow.WorkflowError as exc:
         db.rollback()
@@ -165,6 +166,8 @@ async def save(request: Request, year: int, month: int, background: BackgroundTa
                        "falling in that month were not added.", "error")
     if action == "submit":
         flash(request, submitted_message(submitted), "success")
+        for message in timing:
+            flash(request, message, "info")
         for done in submitted:
             notify_submitted(background, done)
     else:

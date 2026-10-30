@@ -72,8 +72,11 @@ A weekend day that is also a holiday counts in HL121 only (never HL130).
   - Overtime entries are **automatically flagged as on-call interventions** when their date is a booked on-call day
     (`workflow.oncall_dates`, any sheet status, across months). Detected when the entry is added and **re-detected at
     submission** (`recompute_overtime`). The form shows a live "on-call day" hint (`data-oncall-dates`).
-- **Overtime entry** = date + start/end time chosen from `<select>` dropdowns in **30-minute steps**
-  (`OVERTIME_STEP_MINUTES`; From 00:00–23:30, To 00:30–23:30 and 24:00), so the minimum entry is 30 min. Hours and night hours
+- **Overtime entry** = date + start/end time in **15-minute steps** (`OVERTIME_STEP_MINUTES`, default 15, so the minimum
+  entry is 15 min). The time fields are text inputs with a `<datalist>` of suggestions: the user may pick one or **type** it
+  (`08:45`, `8.45`, `8h45`, `0845`, `8`; `calendar_utils.parse_hhmm` is tolerant, JS normalises to HH:MM on blur; `24:00` allowed
+  for the end). The sheet shows hours by day type split into **day and night hours** with the factors (table in the overtime
+  page, `calc.OvertimeTotals.night_by_type`). Hours and night hours
   are computed; night window `NIGHT_START`/`NIGHT_END` (default 22:00–06:00). An entry crossing midnight is **split
   automatically** into one entry per calendar day (refused if the second part falls in another month: the user enters it in the
   next month's sheet). Entries of one user may not overlap. No future dates. End `24:00`/`00:00` = end of day.
@@ -126,27 +129,65 @@ approved ──reopen (admin only, audited, latest sheet of the month only)─�
   `signatures` row per sheet, each with its own digest). All or nothing: if one sheet is refused (e.g. unjustified weekend
   overtime) nothing is submitted. The submit panel is on both pages; the on-call page's "Save & submit" first saves the grid.
   Withdraw / reject / approve stay per sheet.
+- **Navigation** (`base.html`): Dashboard, On-call, Overtime, Approvals, Statistics (managers/admin; `/team`, `access.can_view_team`),
+  Payroll (procurement/admin), then **Admin on the right, just before the user block**.
 - **Month sync**: the month last viewed on the on-call or overtime page is kept in the session (`remember_month`); the nav links
   `/oncall` and `/overtime` open that month (else the current one). A "Current month" button returns to today's month.
-- **Approver = direct line manager** (`users.manager_id`) or an admin. Nobody approves their own sheet.
-- **Payroll period** (`sheets.payroll_year/month`) is fixed at approval by `calc.payroll_period`: approvals up to
-  `PAYROLL_CUTOFF_DAY` (default 10) of month M+1 are paid with work month M; later approvals go to the payroll month that is still
-  open (approval month, or the previous one if approved before its cut-off). A sheet paid in a later period than its work month
-  is a **late claim** (`Sheet.is_late`).
-- The Finance export is per **payroll period**: all approved sheets with that payroll period (regular + late claims, shaded and
-  labelled "Late claim" with their work month). The Summary tab shows the status of every team member for the work month and
-  counts late claims still awaiting validation. Values are computed in Python (no spreadsheet formulas).
+- **Approver = the direct line manager, any manager above them in the chain (skip-level approval, `access.is_above`), or an admin.**
+  Nobody approves their own sheet; peers and people outside the chain cannot. The Approvals list and the dashboard counter of a
+  manager cover everyone below them (`subordinate_ids`); the audit entry carries `skip_level: true` when the approver is not the
+  direct manager. Submission e-mails still go to the direct manager.
+- **Payroll period** (`sheets.payroll_year/month`) is fixed at approval by `calc.payroll_period`: approvals up to the **Finance
+  cut-off** (day of month M+1; default **5**, `PAYROLL_CUTOFF_DAY` env, editable in Admin › Settings as `payroll_cutoff_day`,
+  `app_settings.payroll_cutoff`) are paid with work month M; later approvals go to the payroll month that is still open (approval
+  month, or the previous one if approved before its cut-off). **A period already sent to Finance is closed** (`closed_periods`):
+  the sheet moves on to the next period even if the calendar cut-off has not passed. A sheet paid in a later period than its work
+  month is a **late claim** (`Sheet.is_late`).
+- **IT Procurement role and payroll runs** (`users.is_procurement`, set in Admin › Users or by `LDAP_GROUP_PROCUREMENT`;
+  `routes/payroll.py`, `templates/payroll.html`, nav "Payroll", dependency `payroll_user` = procurement or admin). Procurement
+  exports the **whole organisation** (`export.scope_users`, `access.can_export`) but cannot open individual sheets (404). On
+  `/payroll` (default period = oldest unsent period holding approved sheets, else the period an approval today of last month's work
+  would hit; banner for older unsent periods) it sees what is included (late items listed first with approval dates), what is
+  still awaiting approval, and the download status. **Control**: every whole-organisation download of the on-call / overtime report
+  is audited with a digest of the sheet ids of the period (`workflow.period_digest`, `last_export`); `POST
+  /payroll/<y>/<m>/sent` (`workflow.mark_sent`) requires a ticked confirmation, both reports downloaded by that user **and still
+  matching the current data** (if something was approved since, download again), a non-empty period, and an unclosed period. It
+  writes `payroll_runs` + `payroll_run_items` (one run per period, one item per sheet; `Sheet.sent_at`, "Sent to Finance" shown in
+  the sheet meta), an audit entry `payroll_sent`, in-app notices to the employees (and e-mail), and notices to submitters still
+  waiting ("paid with the following month at the earliest"). A sent sheet cannot be reopened.
+- **Notices** (`notifications` table, shown as banners at the top of every page until dismissed, `POST /notices/<id>/read`,
+  owner only; e-mail too when SMTP is configured): late approval (`workflow.decide`: "paid with <month>, not <work month>"),
+  late submission / logging for a period past its cut-off or closed (`workflow.timing_message`, `warn_payroll_timing`; on-time
+  submissions only get a flash with the approval deadline), payroll sent, still-waiting after a run.
+- **Finance exports** are per **payroll period** (all approved sheets with that payroll period: regular + late claims) and come in
+  three downloads under **Payroll** (`routes/payroll.py`, IT Procurement or admin only, whole organisation; managers no longer
+  export — their Statistics page has no downloads):
+  - `/payroll/export/oncall` → `Y<yy>M<mm>_IT_OnCall.xlsx` and `/payroll/export/overtime` → `Y<yy>M<mm>_IT_Overtime.xlsx`
+    (`export_finance.py`), in the **layout of the two reference workbooks**: the layouts are sanitized prototype tabs
+    `app/timelog/export_templates/{oncall,overtime}_layout.xlsx` (formats, widths, merged cells, conditional formats, fixed headings;
+    no names, no company address, no external links; generated once by `scripts/make-export-templates.py` from the git-ignored
+    `templates/` folder; allowed through `.gitignore`/`.dockerignore`/pre-commit). The exporter copies the row styles and writes
+    **values, not formulas** (on-call amounts are the snapshotted rates; one bucket per day, a weekend holiday counts as a holiday).
+    One tab per work month: the payroll month first, earlier work months (late claims) as extra tabs named "<tab> (late)".
+    *On-call*: team blocks, one row per employee with `1` on on-call days (+ "- Incidents/calls" row for Experts), pricing sheet
+    below (pricing row = employee row + title row), hidden `Support` tab (holidays, default-grade prices). *Overtime*: `READ FIRST` +
+    one row per employee **and compensation** (Paid / TIL), hours per day (holiday days headed `LH`), AI–AM totals by day type,
+    AN–AQ night hours per day type, AR/AX TIL credit, AS–AW payroll codes (AU = night hours).
+  - `/payroll/export/control` → the detailed control workbook (`export.py`): Summary (status of every team member, counts late claims
+    awaiting validation), On-Call, On-Call Grid, Overtime Payroll, detail tabs.
 - Every transition is written to `audit_log`.
 - Optional e-mail notifications (SMTP relay, disabled unless `SMTP_HOST` is set).
 
 ## 4. Security model
 
-- Roles: **employee** (everyone), **manager** (implicit: has direct reports), **admin** (`is_admin`).
+- Roles: **employee** (everyone), **manager** (implicit: has direct reports), **IT Procurement** (`is_procurement`: whole-organisation
+  payroll reports and the sent-to-Finance record, no access to individual sheets), **admin** (`is_admin`).
 - Visibility (`access.py`, the single place for authz): a user sees their own sheets; a manager sees sheets of **all users below
   them in the hierarchy** (recursive, cycle-safe); admin sees all. **Colleagues never see each other.** Unauthorised access to
   another user's data returns **404** (no existence disclosure).
-- Approve/reject: direct manager or admin only. Upper managers can view & export.
-- Export: manager → their subtree (approved sheets of the payroll period); admin → everyone (optional team filter).
+- Approve/reject: any manager above the employee in the hierarchy (direct or skip-level) or an admin.
+- Reports/exports: IT Procurement and admin only, whole organisation (`export.scope_users`); a manager has the Statistics page
+  (their subtree) but no downloads.
 - Sessions: signed cookie (Starlette `SessionMiddleware`), `HttpOnly`, `SameSite=Lax`, `Secure` when `SESSION_COOKIE_SECURE=true`
   (default in compose). Lifetime `SESSION_MAX_AGE`.
 - **CSRF**: per-session token, required on every POST (hidden `csrf_token` field).
@@ -174,7 +215,7 @@ approved ──reopen (admin only, audited, latest sheet of the month only)─�
   each login the user is upserted: names, mail, employeeID, team (`department`), and **manager** from the AD `manager` attribute
   (the manager entry is upserted too, so the hierarchy exists before the manager logs in) unless `users.manager_locked` (admin
   override). Group mapping (nested groups via the AD matching rule `1.2.840.113556.1.4.1941`, not supported by OpenLDAP):
-  `LDAP_GROUP_ADMIN` → is_admin, `LDAP_GROUP_EXPERT` → is_expert, `LDAP_GROUP_REQUIRED` → may log in. An empty group variable means
+  `LDAP_GROUP_ADMIN` → is_admin, `LDAP_GROUP_EXPERT` → is_expert, `LDAP_GROUP_PROCUREMENT` → is_procurement, `LDAP_GROUP_REQUIRED` → may log in. An empty group variable means
   the flag is managed manually in the admin UI.
 - Login order: if the username exists as a **local** user → local check; otherwise LDAP.
 
@@ -191,8 +232,9 @@ approved ──reopen (admin only, audited, latest sheet of the month only)─�
 | Containers | Docker Compose: `proxy`, `app`, `db`; only `proxy` publishes ports |
 
 - Schema created with `create_all` at startup + idempotent seeding (grades, holidays, TIL rules, bootstrap admin). New tables
-  appear automatically; **altering an existing table needs a recreated dev database** — add Alembic before the first schema
-  change in production.
+  appear automatically and **added columns are added by `db.ensure_columns`** (additive, idempotent; a NOT NULL column with a
+  Python-side default is added nullable). Renames, type changes and drops are not covered — add Alembic before the first such change
+  in production.
 - Python **3.12** everywhere (containers and the dev venv: `/opt/homebrew/bin/python3.12 -m venv app/.venv`).
   `requirements.txt` pins direct **and transitive** dependencies; refresh them deliberately (install, `pip check`, tests, then the
   Dependency-Track scan).
@@ -225,7 +267,7 @@ approved ──reopen (admin only, audited, latest sheet of the month only)─�
   nav never wraps), `scrollbar-gutter: stable` + `overflow-y: scroll`, main fonts `<link rel=preload>`ed. Navigation is plain page
   loads. Static assets are cache-busted with `?v={{ build.asset_tag }}`.
 - The browser tab title and the nav labels are title-cased (`titlecase` Jinja filter in `web.py`: "Timelog - Overtime Aug 2026",
-  "Sign In", "Team & Export").
+  "Sign In", "Statistics").
 
 ### 6.2 HTTPS / Microsoft PKI
 - nginx terminates TLS with `certs/server.crt` (server cert **+ intermediate chain**, PEM) and `certs/server.key` (unencrypted),
@@ -285,16 +327,19 @@ app/timelog/             Python package
   backup.py              encrypted backups, restore, schedule
   certtool.py            self-signed certificate and PFX → PEM (runs inside the app image)
   ics_import.py          .ics holiday import
-  export.py              monthly XLSX export for Finance
+  export.py              detailed control export (Summary, payroll codes, detail tabs)
+  export_finance.py      Finance exports in the layout of the on-call and overtime sheets
+  export_templates/      sanitized layouts used by export_finance.py (generated by scripts/make-export-templates.py)
   notify.py              optional SMTP notifications
   web.py, main.py        template helpers; app factory (middleware, scheduler, error handlers)
   version.py             version / build info
   seed.py, demo.py       initial data; `python -m timelog.demo` creates demo local users
-  routes/                auth, home, oncall, overtime, approvals, submission, team, admin, common, notifications
+  routes/                auth, home, oncall, overtime, approvals, submission, payroll, team, admin, common, notifications
   templates/, static/
 app/tests/               pytest (SQLite; PostgreSQL via TEST_DATABASE_URL)
 proxy/nginx.conf.template
-scripts/                 build, coverage, backup-db, make-csr, make-selfsigned, make-offline-package
+scripts/                 build, coverage, backup-db, make-csr, make-selfsigned, make-offline-package, make-export-templates
+docs/screenshots/        README screenshots (demo data, fictional users; regenerate when the UI changes, see §8.5)
 deploy/                  files shipped in the offline package (installers, convert-pfx, README-OFFLINE-<target>.md)
 certs/                   (git-ignored) server.crt / server.key / ldap-ca.pem
 dist/                    (git-ignored) offline packages
@@ -322,7 +367,7 @@ The JS (`static/app.js`) has no automated tests; static assets are excluded from
 
 ### 8.1 Repository hygiene (no secrets / personal data in git)
 - `.gitignore` excludes: `.env*` (except `.env.example`), all TLS material (`certs/*`, `*.key|pem|crt|csr|p12|pfx`), `/templates/`
-  (local reference documents that may contain personal data), `*.xlsx|csv` (exports), databases/dumps (`*.db`, `*.sql*`,
+  (local reference documents that may contain personal data), `*.xlsx|csv` (exports; except the two sanitized layouts in `app/timelog/export_templates/`), databases/dumps (`*.db`, `*.sql*`,
   `backups/`), `dist/`, build stamps, venvs, editor files.
 - `.githooks/pre-commit` (enable per clone: `git config core.hooksPath .githooks`) refuses those files and staged content with
   private keys or `*_PASSWORD=`/`SECRET_KEY=` literals, and checks `.env.example` keeps only empty / `change-me…` placeholders.
@@ -371,9 +416,20 @@ The JS (`static/app.js`) has no automated tests; static assets are excluded from
 - The README section "Offline (air-gapped) deployment" is the operator documentation; keep it and the two
   `deploy/README-OFFLINE-*.md` in step with the scripts. Releasing: bump `__version__`, run the tests, build the package(s).
 
+### 8.5 README screenshots
+- `docs/screenshots/*.png` (dashboard, on-call, overtime, approvals, statistics, payroll) are referenced from README.md. They are
+  taken from a **throwaway SQLite instance** (`python -m timelog.demo` + a few sheets submitted/approved through `workflow`), driven
+  headless with Playwright using the installed Brave as the browser (viewport 1360×1000, scale 1.5, notices cleared). Use fictional
+  demo users only (§8.1); never capture the real stack. Not part of the offline package.
+
 ## 9. Current state
 
-- 86 pytest tests pass on SQLite; the backup and restore tests also pass on PostgreSQL 16. SonarQube and Dependency-Track clean.
+- Version **1.7.0**. 101 pytest tests pass on SQLite; the backup and restore tests also pass on PostgreSQL 16. SonarQube (0 issues,
+  0 hotspots, gate passed) and Dependency-Track (0 findings) re-run clean on this version.
+- Latest offline package: `dist/timelog-1.7.0-offline-rhel9-amd64.zip` (+ `.sha256`), built from the 1.7.0 sources. Older packages in
+  `dist/` (1.3.1, 1.4.0) are obsolete.
+- The local Docker instance holds no demo users: only `admin` and `tuser` (admin). Demo data for screenshots lives in a throwaway
+  SQLite database, never in the local stack.
 - **Verified**: image build; the full stack (nginx HTTPS + app + PostgreSQL 16, all healthy); HTTP→HTTPS redirect; every page for
   each role; the offline package built, unzipped in an empty folder and installed without any repository or registry (RHEL 9 amd64
   package under emulation: install, in-place upgrade with data kept, PFX conversion); the bundled Docker RPMs install on a clean
@@ -384,9 +440,9 @@ The JS (`static/app.js`) has no automated tests; static assets are excluded from
 
 ## 10. Open questions / future work
 - Confirm with HR whether 24/12 counts as a holiday for on-call as well; confirm the Sunday-holiday premium rule with Payroll.
-- Confirm the payroll cut-off day (assumed the 10th of the following month) and the 12-month look-back.
+- Confirm the Finance cut-off day (default the 5th of the following month, editable) and the 12-month look-back.
 - Should expert interventions also be counted (not paid) for reporting? Currently counted in the export.
-- Delegation of approval during manager absence (currently: an admin can approve).
+- Explicit delegation / absence handling beyond skip-level approval (e.g. a named delegate, notification of the skip-level manager when the direct manager is slow).
 - Finance read-only role (currently managers export and send the file).
 - Alembic migrations before the first production schema change.
 - Restrict the on-call conflict check per team if rotations turn out to be per team.

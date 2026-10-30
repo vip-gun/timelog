@@ -34,3 +34,35 @@ def get_db() -> Iterator[Session]:
         yield db
     finally:
         db.close()
+
+
+def ensure_columns(engine: Engine) -> list:
+    """Additive schema upgrade: add the columns that models gained since the database was created.
+
+    `create_all` creates missing tables but never alters existing ones. This adds missing columns of existing tables
+    (nullable, or with a simple default) so an upgrade needs no manual migration. Anything that is not an added column
+    (renames, type changes, dropped columns) still needs a real migration."""
+    from sqlalchemy import inspect, text
+    from sqlalchemy.schema import CreateColumn
+
+    added = []
+    insp = inspect(engine)
+    for table in Base.metadata.sorted_tables:
+        if not insp.has_table(table.name):
+            continue
+        have = {c["name"] for c in insp.get_columns(table.name)}
+        for col in table.columns:
+            if col.name in have:
+                continue
+            ddl = str(CreateColumn(col).compile(dialect=engine.dialect))
+            default = ""
+            if col.default is not None and getattr(col.default, "is_scalar", False):
+                value = col.default.arg
+                default = " DEFAULT " + ("TRUE" if value is True else "FALSE" if value is False else
+                                         repr(value) if isinstance(value, (int, float)) else "'" + str(value).replace("'", "''") + "'")
+            if not default:
+                ddl = ddl.replace(" NOT NULL", "")   # no portable default (e.g. a Python-side one): add it nullable
+            with engine.begin() as conn:
+                conn.execute(text(f"ALTER TABLE {table.name} ADD COLUMN {ddl}{default}"))
+            added.append(f"{table.name}.{col.name}")
+    return added

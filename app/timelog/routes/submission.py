@@ -43,12 +43,15 @@ async def submit_month(request: Request, year: int, month: int, background: Back
                                        str(form.get("employee_comment", "")), signature)
         if signature is not None and form.get("save_signature"):
             save_signature_picture(db, me, signature.png)
+        timing = workflow.warn_payroll_timing(db, get_settings(), sheets)
         db.commit()
     except workflow.WorkflowError as exc:
         db.rollback()
         flash(request, str(exc), "error")
         return redirect(url)
     flash(request, submitted_message(sheets), "success")
+    for message in timing:
+        flash(request, message, "info")
     for sheet in sheets:
         notify_submitted(background, sheet)
     return redirect(url)

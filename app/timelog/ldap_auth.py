@@ -33,6 +33,7 @@ class LdapProfile:
     manager: Optional["LdapProfile"] = None
     is_admin: Optional[bool] = None  # None = not managed by LDAP
     is_expert: Optional[bool] = None
+    is_procurement: Optional[bool] = None
 
 
 def _server(s: Settings):
@@ -129,6 +130,8 @@ def _enrich(s: Settings, svc, entry, profile: LdapProfile) -> None:
         profile.is_admin = _is_member(s, svc, profile.dn, s.ldap_group_admin)
     if s.ldap_group_expert:
         profile.is_expert = _is_member(s, svc, profile.dn, s.ldap_group_expert)
+    if s.ldap_group_procurement:
+        profile.is_procurement = _is_member(s, svc, profile.dn, s.ldap_group_procurement)
     manager_dn = _attr(entry, s.ldap_attr_manager)
     if manager_dn:
         svc.search(manager_dn, "(objectClass=*)", search_scope=BASE, attributes=_attributes(s))
@@ -239,6 +242,8 @@ def sync_user(db: Session, p: LdapProfile) -> User:
         user.is_admin = p.is_admin
     if p.is_expert is not None:
         user.is_expert = p.is_expert
+    if p.is_procurement is not None:
+        user.is_procurement = p.is_procurement
     if p.manager is not None and not user.manager_locked:
         manager = _upsert(db, p.manager)
         db.flush()

@@ -22,7 +22,7 @@
   <summary>Log overtime</summary>
   <p class="help">
     Any day from {{ window_first|date }} to today: the entry goes to the sheet of its month, so you can catch up on previous months.
-    Times in {{ step }}-minute steps. Night hours ({{ '%02d:%02d' % (settings.night_start // 60, settings.night_start % 60) }}–{{ '%02d:%02d' % (settings.night_end // 60, settings.night_end % 60) }}) are computed automatically and an entry past midnight is split per day.
+    Type a time (for example 08:45) or pick one from the list; times are in {{ step }}-minute steps. Night hours ({{ '%02d:%02d' % (settings.night_start // 60, settings.night_start % 60) }}–{{ '%02d:%02d' % (settings.night_end // 60, settings.night_end % 60) }}) are computed automatically and an entry past midnight is split per day.
     Entries on your <strong>on-call days</strong> are detected automatically as on-call interventions; other weekend/holiday overtime must be pre-approved by your manager.
   </p>
   {% if latest_submitted %}<div class="banner banner-info">Your {{ month_label(year, month) }} sheet is awaiting validation: withdraw it below to add entries for this month.</div>{% endif %}
@@ -31,8 +31,9 @@
     <input type="hidden" name="csrf_token" value="{{ csrf }}">
     <label>Date <input type="date" name="date" id="ot-date" required value="{{ default_date.isoformat() }}" min="{{ window_first.isoformat() }}" max="{{ window_last.isoformat() }}">
       <span class="oncall-hint" id="ot-oncall-hint" hidden>● On-call day - recorded as an on-call intervention</span></label>
-    <label>From <select name="start" required><option value="">--:--</option>{% for m in range(0, 1440, step) %}<option value="{{ '%02d:%02d' % (m // 60, m % 60) }}">{{ '%02d:%02d' % (m // 60, m % 60) }}</option>{% endfor %}</select></label>
-    <label>To <select name="end" required><option value="">--:--</option>{% for m in range(step, 1440, step) %}<option value="{{ '%02d:%02d' % (m // 60, m % 60) }}">{{ '%02d:%02d' % (m // 60, m % 60) }}</option>{% endfor %}<option value="24:00">24:00</option></select></label>
+    <label>From <input name="start" id="ot-start" list="ot-times" class="js-time" inputmode="numeric" autocomplete="off" placeholder="HH:MM" maxlength="5" required></label>
+    <label>To <input name="end" id="ot-end" list="ot-times" class="js-time" inputmode="numeric" autocomplete="off" placeholder="HH:MM" maxlength="5" required></label>
+    <datalist id="ot-times">{% for m in range(0, 1441, step) %}<option value="{{ '%02d:%02d' % (m // 60, m % 60) }}">{% endfor %}</datalist>
     {% if features.til %}
     <div>
       <span class="field-label">Compensation</span><br>
@@ -96,13 +97,19 @@
   </table>
   </div>
   {% set t = b.totals %}
+  <table class="table breakdown" aria-label="Overtime hours by day type, day and night">
+    <thead><tr><th scope="col">Day type</th><th scope="col" class="r">Day hours</th><th scope="col" class="r">Night hours</th><th scope="col" class="r">Total</th><th scope="col" class="r">Factor day / night</th></tr></thead>
+    <tbody>
+    {% for code, label in [("W", "Weekday"), ("SAT", "Saturday"), ("SUN", "Sunday"), ("H", "Legal holiday")] %}
+      {% set total = t.hours_by_type[code] %}{% set night = t.night_by_type[code] %}
+      <tr><th scope="row">{{ label }}</th><td class="r">{{ (total - night)|hours }} h</td><td class="r">{{ night|hours }} h</td><td class="r"><strong>{{ total|hours }} h</strong></td>
+        <td class="r muted">&times;{{ factors[code][0] }} / &times;{{ factors[code][1] }}</td></tr>
+    {% endfor %}
+    </tbody>
+    <tfoot><tr><td>Total</td><td class="r">{{ (t.total_hours - t.total_night)|hours }} h</td><td class="r">{{ t.total_night|hours }} h</td><td class="r"><strong>{{ t.total_hours|hours }} h</strong></td><td></td></tr></tfoot>
+  </table>
   <div class="totals stagger">
-    <div><span>Weekday</span><strong>{{ t.hours_by_type['W']|hours }} h</strong></div>
-    <div><span>Saturday</span><strong>{{ t.hours_by_type['SAT']|hours }} h</strong></div>
-    <div><span>Sunday</span><strong>{{ t.hours_by_type['SUN']|hours }} h</strong></div>
-    <div><span>Holiday</span><strong>{{ t.hours_by_type['H']|hours }} h</strong></div>
-    <div><span>Night</span><strong>{{ t.total_night|hours }} h</strong></div>
-    <div><span>Total</span><strong>{{ t.total_hours|hours }} h</strong></div>
+    <div><span>Total hours</span><strong>{{ t.total_hours|hours }} h</strong></div>
     {% if til %}
     <div><span>Paid</span><strong>{{ t.paid_hours|hours }} h</strong></div>
     <div><span>TIL credit</span><strong>{{ t.til_credit|hours }} h</strong></div>

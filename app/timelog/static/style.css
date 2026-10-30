@@ -30,6 +30,9 @@
   --muted: #717D96;
   --border: #E2E0DC;
   --error: #C20000;
+  --burgundy: #A3304F;           /* Admin button: 6.8:1 with white text; its light border (4.5:1) keeps it distinct on the plum header */
+  --burgundy-hover: #B8395B;
+  --burgundy-edge: #E0A3B5;
   --success: #2F7D57;
   --warning: #A86B00;
 
@@ -76,19 +79,22 @@ h2 { font-size: 1.3rem; margin: 0 0 1rem; }
 .brand-mark svg { width: 18px; height: 18px; }
 .topbar nav { display: flex; gap: .25rem; flex: 1; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
 .topbar nav::-webkit-scrollbar { display: none; }
-.topbar nav a { white-space: nowrap; }
-.brand, .who { flex: none; }
-.topbar nav a {
+.topbar nav a, .admin-link { white-space: nowrap; }
+.brand, .who, .admin-link { flex: none; }
+.topbar nav a, .admin-link {
   position: relative; color: rgba(255,255,255,.82); padding: .45rem .8rem; border-radius: 2px; font-weight: 500;
   transition: color .2s, background .2s;
 }
-.topbar nav a::after {
+.topbar nav a::after, .admin-link::after {
   content: ""; position: absolute; left: .8rem; right: .8rem; bottom: .2rem; height: 2px; border-radius: 2px;
   background: var(--primary-vlight); transform: scaleX(0); transform-origin: left; transition: transform .12s linear;
 }
-.topbar nav a:hover { color: #fff; background: rgba(255,255,255,.08); }
-.topbar nav a:hover::after, .topbar nav a.active::after { transform: scaleX(1); }
-.topbar nav a.active { color: #fff; }
+.topbar nav a:hover, .admin-link:hover { color: #fff; background: rgba(255,255,255,.08); }
+.topbar nav a:hover::after, .topbar nav a.active::after, .admin-link:hover::after, .admin-link.active::after { transform: scaleX(1); }
+.topbar nav a.active, .admin-link.active { color: #fff; }
+.admin-link { background: var(--burgundy); color: #fff; border: 1px solid var(--burgundy-edge); font-weight: 600; padding-top: calc(.45rem - 1px); padding-bottom: calc(.45rem - 1px); }
+.admin-link:hover, .admin-link.active { background: var(--burgundy-hover); }
+.admin-link::after { display: none; }
 .who { display: flex; gap: .9rem; align-items: center; font-size: .9rem; }
 .avatar { width: 34px; height: 34px; border-radius: 2px; display: grid; place-items: center; font-weight: 600; font-size: .85rem; color: var(--secondary); background: var(--primary-vvlight); border: 2px solid var(--primary-vlight); }
 .who .tag { background: rgba(255,255,255,.14); color: #fff; }
@@ -419,3 +425,20 @@ pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
 
 .ldap-test { margin-top: 1.6rem; padding-top: 1.2rem; border-top: 1px solid var(--border); }
 .ldap-test h3 { margin: 0 0 .4rem; font-size: 1.1rem; }
+
+.breakdown { margin-top: 1rem; }
+.breakdown tfoot td { font-weight: 700; border-top: 2px solid var(--secondary); }
+
+.notice { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+.notice form { flex: none; }
+
+/* Documentation: table of contents as a vertical list on the left */
+.docs-layout { display: grid; grid-template-columns: 15rem minmax(0, 1fr); gap: 1.5rem; align-items: start; }
+.docs-toc { position: sticky; top: 76px; flex-direction: column; flex-wrap: nowrap; gap: .1rem; width: auto; margin: 0; border-radius: 2px; padding: .5rem; }
+.docs-toc a { border-radius: 2px; padding: .45rem .7rem; border-left: 3px solid transparent; }
+.docs-toc a:hover { border-left-color: var(--primary); }
+.docs-body { min-width: 0; }
+@media (max-width: 860px) {
+  .docs-layout { grid-template-columns: 1fr; }
+  .docs-toc { position: static; flex-direction: row; flex-wrap: wrap; }
+}

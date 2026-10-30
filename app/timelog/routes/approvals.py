@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import calc, workflow
-from ..access import require_view_sheet
+from ..access import require_view_sheet, subordinate_ids
 from ..config import get_settings
 from ..db import get_db
 from ..models import KIND_ONCALL, SUBMITTED, Sheet, Signature, User
@@ -29,7 +29,7 @@ def sheet_summary(sheet: Sheet) -> str:
 def approvals(request: Request, me: User = Depends(current_user), db: Session = Depends(get_db)):
     q = select(Sheet).join(User, Sheet.user_id == User.id).where(Sheet.status == SUBMITTED, Sheet.user_id != me.id)
     if not me.is_admin:
-        q = q.where(User.manager_id == me.id)
+        q = q.where(User.id.in_(subordinate_ids(db, me)))   # direct reports and everyone below them (skip-level approval)
     pending = list(db.scalars(q.order_by(Sheet.submitted_at)))
     recent = list(db.scalars(
         select(Sheet).where(Sheet.decided_by_id == me.id).order_by(Sheet.decided_at.desc()).limit(20)))

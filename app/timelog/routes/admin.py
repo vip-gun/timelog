@@ -22,7 +22,7 @@ from ..config import get_settings
 from ..ldap_auth import diagnose
 from ..db import get_db, get_engine
 from ..ics_import import MAX_BYTES, IcsError, parse_ics
-from ..models import DAY_TYPES, SETTING_ONCALL_HANDOVER, SETTING_ONCALL_WEEK_START, SETTING_SHOW_AMOUNTS, SETTING_SIGNATURE_REQUIRED, SETTING_TIL_ENABLED, AppSetting, AuditLog, Grade, Holiday, OvertimeRule, User, utcnow
+from ..models import DAY_TYPES, SETTING_ONCALL_HANDOVER, SETTING_ONCALL_WEEK_START, SETTING_PAYROLL_CUTOFF, SETTING_SHOW_AMOUNTS, SETTING_SIGNATURE_REQUIRED, SETTING_TIL_ENABLED, AppSetting, AuditLog, Grade, Holiday, OvertimeRule, User, utcnow
 from ..security import admin_user, check_password_policy, flash, hash_password, verify_csrf
 from ..web import redirect, render
 from ..workflow import audit
@@ -81,7 +81,7 @@ def save_user(
     email: str = Form(""), employee_id: str = Form(""), team: str = Form(""),
     manager_id: Optional[str] = Form(None), manager_locked: Optional[str] = Form(None),
     grade_id: Optional[str] = Form(None), is_expert: Optional[str] = Form(None),
-    is_admin: Optional[str] = Form(None), is_active: Optional[str] = Form(None),
+    is_admin: Optional[str] = Form(None), is_procurement: Optional[str] = Form(None), is_active: Optional[str] = Form(None),
     password: str = Form(""),
     me: User = Depends(admin_user), db: Session = Depends(get_db),
 ):
@@ -108,6 +108,7 @@ def save_user(
         if user.id == me.id and (not is_admin or not is_active):
             raise ValueError("You cannot remove your own admin rights or deactivate yourself.")
         user.is_admin, user.is_active = bool(is_admin), bool(is_active)
+        user.is_procurement = bool(is_procurement)
         new_manager = int(manager_id) if manager_id else None
         if new_manager is not None and user.id is not None:
             if new_manager == user.id or new_manager in subordinate_ids(db, user):
@@ -122,7 +123,7 @@ def save_user(
             raise ValueError("A password is required for a new local user.")
         db.flush()
         audit(db, me, "user_create" if creating else "user_update", "user", user.id,
-              username=user.username, admin=user.is_admin, expert=user.is_expert, active=user.is_active,
+              username=user.username, admin=user.is_admin, procurement=user.is_procurement, expert=user.is_expert, active=user.is_active,
               manager_id=user.manager_id, password_changed=bool(password))
         db.commit()
     except ValueError as exc:
@@ -184,8 +185,12 @@ def save_grade(request: Request, grade_id: Optional[int] = Form(None), code: str
 def docs(request: Request, db: Session = Depends(get_db)):
     day, handover = oncall_week(db, get_settings())
     names = backups.WEEKDAYS
-    return render(request, "admin/docs.html", {"week_start_name": names[day], "week_end_name": names[(day + 6) % 7],
-                                               "week_handover": handover})
+    return render(request, "admin/docs.html", {
+        "week_start_name": names[day], "week_end_name": names[(day + 6) % 7], "week_handover": handover,
+        "grades": list(db.scalars(select(Grade).order_by(Grade.code))),
+        "rules": {r.day_type: r for r in db.scalars(select(OvertimeRule))},
+        "til_on": get_flag(db, SETTING_TIL_ENABLED),
+    })
 
 
 @router.get("/holidays")
@@ -384,10 +389,15 @@ def test_ldap(request: Request, test_username: str = Form(""), me: User = Depend
 @router.post("/settings", dependencies=[Depends(verify_csrf)])
 def save_settings(request: Request, show_amounts: Optional[str] = Form(None), til_enabled: Optional[str] = Form(None),
                   signature_required: Optional[str] = Form(None), week_start: Optional[int] = Form(None),
-                  handover: str = Form(""), me: User = Depends(admin_user), db: Session = Depends(get_db)):
+                  handover: str = Form(""), payroll_cutoff: Optional[int] = Form(None), me: User = Depends(admin_user), db: Session = Depends(get_db)):
     set_setting(db, SETTING_SHOW_AMOUNTS, "1" if show_amounts else "0")
     set_setting(db, SETTING_TIL_ENABLED, "1" if til_enabled else "0")
     set_setting(db, SETTING_SIGNATURE_REQUIRED, "1" if signature_required else "0")
+    if payroll_cutoff is not None:
+        if not 1 <= payroll_cutoff <= 28:
+            flash(request, "The cut-off day must be between 1 and 28.", "error")
+            return redirect("/admin/settings")
+        set_setting(db, SETTING_PAYROLL_CUTOFF, str(payroll_cutoff))
     if week_start is not None:
         try:
             parse_hhmm(handover)
@@ -401,7 +411,7 @@ def save_settings(request: Request, show_amounts: Optional[str] = Form(None), ti
         set_setting(db, SETTING_ONCALL_HANDOVER, handover)
     audit(db, me, "settings_update", "settings", None, show_amounts_to_employees=bool(show_amounts),
           til_enabled=bool(til_enabled), signature_required=bool(signature_required),
-          oncall_week_start=week_start, oncall_handover=handover)
+          oncall_week_start=week_start, oncall_handover=handover, payroll_cutoff=payroll_cutoff)
     db.commit()
     flash(request, "Settings saved.", "success")
     return redirect("/admin/settings")

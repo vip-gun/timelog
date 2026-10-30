@@ -36,7 +36,7 @@ SHORT_TYPE = {WEEKDAY: "W", SATURDAY: "Sat", SUNDAY: "Sun", HOLIDAY: "H"}
 
 def scope_users(db: Session, viewer: User, team: str = "") -> List[User]:
     """Users included in the viewer's export: subtree for managers, everyone for admins."""
-    if viewer.is_admin:
+    if viewer.is_admin or viewer.is_procurement:   # IT Procurement exports the whole organisation
         users = list(db.scalars(select(User)))
     else:
         ids = subordinate_ids(db, viewer)

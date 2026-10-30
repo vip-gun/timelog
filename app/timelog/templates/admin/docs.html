@@ -1,20 +1,26 @@
 {% extends "base.html" %}
-{% block title %}Documentation{% endblock %}
+{% block title %}Documentation</div>
+</div>
+{% endblock %}
 {% block content %}
 {% include "admin/_nav.html" %}
 <div class="page-head"><div><span class="eyebrow">Administration</span><h1>Documentation</h1></div></div>
 
+<div class="docs-layout">
 <nav class="subnav docs-toc" aria-label="Sections">
   <a href="#overview">How it works</a>
   <a href="#roles">Roles &amp; visibility</a>
   <a href="#oncall">On-call</a>
   <a href="#overtime">Overtime</a>
+  <a href="#rates">Rates &amp; calculation</a>
   <a href="#workflow">Submission &amp; approval</a>
   <a href="#export">Finance export</a>
+  <a href="#payrun">Payroll run &amp; cut-off</a>
   <a href="#ssl">SSL / HTTPS</a>
   <a href="#ldap">LDAP / Active Directory</a>
   <a href="#ops">Operations</a>
 </nav>
+<div class="docs-body">
 
 <section class="card docs" id="overview">
   <h2>How the application works</h2>
@@ -24,7 +30,7 @@
     <li>The employee fills a <em>draft</em> for the month: on-call days and, for normal employees, overtime entries. The two sheets are separate drafts.</li>
     <li>One <strong>Submit</strong> sends every draft of that month to the line manager together (with a comment and, if enabled, a signature).</li>
     <li>The manager approves, or rejects with a comment. A rejected sheet is edited and submitted again.</li>
-    <li>Approved sheets appear in the monthly <strong>Finance export</strong> of the manager's team.</li>
+    <li>Approved sheets appear in the monthly reports that <strong>IT Procurement</strong> sends to Finance (<em>Payroll</em>).</li>
   </ol>
   <p>The month shown on the On-call and Overtime pages is kept in sync until you change it. The <em>Current month</em> button jumps back to today's month.</p>
 </section>
@@ -36,7 +42,8 @@
     <tbody>
       <tr><th scope="row">Employee</th><td>Declares on-call and overtime, submits, withdraws a submitted sheet, sees only their own data.</td></tr>
       <tr><th scope="row">Expert</th><td>On-call only. An intervention on an on-call day doubles that day's rate. Experts cannot file overtime (refused server-side).</td></tr>
-      <tr><th scope="row">Line manager</th><td>Anyone with direct reports. Approves or rejects the sheets of direct reports, sees everyone below them in the hierarchy and exports their team.</td></tr>
+      <tr><th scope="row">Line manager</th><td>Anyone with direct reports. Approves or rejects the sheets of their direct reports and, <strong>skip-level</strong>, of everyone below them (for example when the direct manager is absent), sees everyone below them in the hierarchy and has the <em>Statistics</em> page (status and totals of their team).</td></tr>
+      <tr><th scope="row">IT Procurement</th><td>Downloads the on-call and overtime reports for the whole organisation under <em>Payroll</em>, sends them to Finance, and records here that they were sent. Cannot see individual declarations. Assigned in Users (or by the LDAP group <code>LDAP_GROUP_PROCUREMENT</code>).</td></tr>
       <tr><th scope="row">Administrator</th><td>Manages users, grades, holidays, settings and sees the audit log. Can approve any sheet and reopen an approved sheet (audited).</td></tr>
     </tbody>
   </table>
@@ -64,6 +71,53 @@
   </ul>
 </section>
 
+<section class="card docs" id="rates">
+  <h2>Rates &amp; calculation</h2>
+
+  <h3>Day types</h3>
+  <p>Every calendar day has exactly one type: <strong>Legal holiday</strong> (from the <a href="/admin/holidays">holiday table</a>) wins over <strong>Saturday</strong> and <strong>Sunday</strong>, which win over <strong>Weekday</strong>. A Sunday that is also a holiday is a holiday.</p>
+
+  <h3>On-call daily rates ({{ settings.currency }} per on-call day, per grade)</h3>
+  <table class="table">
+    <thead><tr><th scope="col">Grade</th><th scope="col" class="r">Weekday</th><th scope="col" class="r">Saturday</th><th scope="col" class="r">Sunday</th><th scope="col" class="r">Legal holiday</th></tr></thead>
+    <tbody>
+    {% for g in grades %}<tr><th scope="row">{{ g.code }}{% if g.name %} <span class="muted small">{{ g.name }}</span>{% endif %}</th><td class="r">{{ g.rate_weekday|money }}</td><td class="r">{{ g.rate_saturday|money }}</td><td class="r">{{ g.rate_sunday|money }}</td><td class="r">{{ g.rate_holiday|money }}</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  <p class="help">The amount of an on-call day is the rate of the employee's grade for that day's type. For an <strong>Expert</strong>, a day with an intervention pays <strong>twice</strong> the daily rate, whatever its duration. Normal employees record interventions as overtime instead. Rates are edited under <a href="/admin/grades">Grades &amp; on-call rates</a> and are frozen on a sheet when it is submitted.</p>
+
+  <h3>Overtime: hours, day and night</h3>
+  <p>Overtime is entered as a start and end time in {{ settings.overtime_step_minutes }}-minute steps. The application splits each entry into <strong>day hours</strong> and <strong>night hours</strong> (night = {{ '%02d:%02d' % (settings.night_start // 60, settings.night_start % 60) }}–{{ '%02d:%02d' % (settings.night_end // 60, settings.night_end % 60) }}) and sums them per day type. The overtime page shows this breakdown for each sheet.</p>
+
+  <h3>Payroll codes (paid overtime)</h3>
+  <p>The premiums are additive; Finance applies the employee's hourly rate to the hours of each code.</p>
+  <table class="table">
+    <thead><tr><th scope="col">Code</th><th scope="col">Meaning</th><th scope="col">Hours counted</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">HL100</th><td>Normal, base 100%</td><td>All paid overtime hours</td></tr>
+      <tr><th scope="row">HL101</th><td>Normal, 50% premium</td><td>All paid overtime hours</td></tr>
+      <tr><th scope="row">HL111</th><td>Night, 30% premium</td><td>Paid night hours (any day type)</td></tr>
+      <tr><th scope="row">HL130</th><td>Sunday, 70% premium</td><td>Paid hours on Sundays</td></tr>
+      <tr><th scope="row">HL121</th><td>Legal holiday, 200% premium</td><td>Paid hours on legal holidays (never also HL130)</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Overtime multipliers</h3>
+  <p>Adding the premiums gives the total multiplier of an hour. The same factors are used to credit <strong>time in lieu</strong> {% if not til_on %}(currently switched off in <a href="/admin/settings">Settings</a>){% endif %}: one overtime hour compensated as TIL credits hours &times; factor.</p>
+  <table class="table">
+    <thead><tr><th scope="col">Day type</th><th scope="col" class="r">Day</th><th scope="col" class="r">Night</th><th scope="col">Made of</th></tr></thead>
+    <tbody>
+    {% for code, label, parts in [("W", "Weekday", "100% + 50% (night: + 30%)"), ("SAT", "Saturday", "100% + 50% (night: + 30%)"), ("SUN", "Sunday", "100% + 50% + 70% (night: + 30%)"), ("H", "Legal holiday", "100% + 50% + 200% (night: + 30%)")] %}
+    <tr><th scope="row">{{ label }}</th><td class="r">&times;{{ "%g"|format(rules[code].til_factor) if rules.get(code) else "-" }}</td><td class="r">&times;{{ "%g"|format(rules[code].til_factor_night) if rules.get(code) else "-" }}</td><td class="muted">{{ parts }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="help">Example: 2 h on a weekday evening, of which 1 h at night, paid: HL100 = 2, HL101 = 2, HL111 = 1. The same 2 h taken as time in lieu credit 1 &times; 1.5 + 1 &times; 1.8 = 3.3 h. The factors can be changed under <a href="/admin/rules">TIL factors</a>; the payroll premiums above are fixed by the payroll codes.</p>
+
+  <h3>Payroll period</h3>
+  <p>Sheets approved up to day {{ payroll_cutoff }} of the following month (the Finance cut-off, set in <a href="/admin/settings">Settings</a>) are paid with their work month; later approvals are paid with the following month. See <a href="#payrun">Payroll run &amp; cut-off</a>.</p>
+</section>
+
 <section class="card docs" id="workflow">
   <h2>Submission &amp; approval</h2>
 <pre><code>draft ──submit──▶ submitted ──approve──▶ approved
@@ -72,15 +126,33 @@
 approved ──reopen (admin, audited)──▶ draft</code></pre>
   <ul>
     <li><strong>One submission per month</strong> covers the on-call and overtime drafts. If any sheet is refused (for instance unjustified weekend overtime) nothing is submitted.</li>
-    <li>Only the <strong>direct line manager</strong> or an administrator approves; nobody approves their own sheet. Every transition is written to the <a href="/admin/audit">audit log</a>.</li>
+    <li>The <strong>direct line manager</strong>, any manager <strong>above</strong> them in the hierarchy (skip-level approval) or an administrator approves; nobody approves their own sheet, and peers cannot approve each other. The audit log notes when an approval was made skip-level. Every transition is written to the <a href="/admin/audit">audit log</a>.</li>
     <li><strong>Signature</strong> (Settings): employees draw, or upload a picture of, their signature and confirm a statement. It is stored with a SHA-256 fingerprint of the sheet; managers see a check that the content is unchanged since signing. This is a simple electronic signature, not a qualified one.</li>
-    <li><strong>Payroll period</strong>: sheets approved up to day {{ settings.payroll_cutoff_day }} of the following month are paid with their work month; later approvals go to the next open payroll period and are shown as <em>late claims</em> (<code>PAYROLL_CUTOFF_DAY</code>).</li>
+    <li><strong>Payroll period</strong>: sheets approved up to day {{ payroll_cutoff }} of the following month are paid with their work month; later approvals go to the next open payroll period and are shown as <em>late claims</em> (<code>PAYROLL_CUTOFF_DAY</code>).</li>
   </ul>
 </section>
 
 <section class="card docs" id="export">
   <h2>Finance export</h2>
-  <p>Managers (their team) and administrators (everyone, optional team filter) download an <code>.xlsx</code> export per payroll period under <a href="/team">Team &amp; export</a>. Tabs: <em>Summary</em> (status of every person, so missing or pending sheets are visible), <em>On-Call</em>, <em>On-Call Grid</em>, <em>Overtime Payroll</em> (hours by day type, night hours, payroll codes, TIL), and the line-by-line detail tabs.</p>
+  <p>IT Procurement (and administrators) download the reports for a payroll period under <a href="/payroll">Payroll</a>; they cover the whole organisation. Two files follow the layout of the sheets Finance works with:</p>
+  <ul>
+    <li><strong>On-call sheet</strong> (<code>Y26M10_IT_OnCall.xlsx</code>): one tab per work month. Dates, weekday and type (<em>W</em>, <em>Sat</em>, <em>Sun</em>, <em>H</em>) across the top, employees grouped by team, a <code>1</code> on each on-call day, a second "&hellip; - Incidents/calls" line for Experts with a <code>1</code> on days with an intervention, and the <em>Pricing sheet</em> below with the amount of every day (the rate frozen at submission, so an Expert intervention counts twice). A hidden <em>Support</em> tab holds the holiday list and the day prices.</li>
+    <li><strong>Overtime sheet</strong> (<code>Y26M10_IT_Overtime.xlsx</code>): the <em>READ FIRST</em> tab and one tab per work month, with one line per employee and compensation (<em>Paid</em> or <em>TIL</em>), the hours of each day (legal-holiday days are marked <code>LH</code>), the totals Normal / Saturday / Sunday / Legal holiday, the night hours per day type, and the payroll columns HL100, HL101, HL111, HL130, HL121 and TIL.</li>
+  </ul>
+  <p>Each file contains the approved sheets paid in the chosen payroll period. Late claims (earlier work months approved after their cut-off) get their own tab named like the month with "(late)". The cells hold the values computed by the application, not formulas, and a legal holiday that falls on a Saturday or Sunday is counted once, as a holiday. A third download gives a <em>detailed control export</em> (summary of every team member's status, payroll codes and the line-by-line detail).</p>
+</section>
+
+<section class="card docs" id="payrun">
+  <h2>Payroll run &amp; cut-off</h2>
+  <p>Finance accepts the monthly reports until a <strong>cut-off</strong>: day {{ payroll_cutoff }} of the following month (Admin › Settings). The process is controlled in the application:</p>
+  <ol>
+    <li><strong>Employees and managers</strong> submit and approve as usual. Everything approved up to the cut-off is paid with its work month.</li>
+    <li><strong>IT Procurement</strong> opens <em>Payroll</em>, chooses the period, and downloads the <em>on-call</em> and <em>overtime</em> reports (whole organisation: the work month plus, one tab per earlier month, everything that was validated late). The page lists what is included, with approval dates, and what is still waiting for approval.</li>
+    <li>After e-mailing both reports to Finance, IT Procurement ticks the confirmation and <strong>records the payroll as sent</strong> (optional reference). The application logs it in the audit log, marks every included sheet as <em>sent to Finance</em> (visible to the employee on the sheet) and tells the employees. Recording is only possible when both reports were downloaded and still match the approved data: if something was approved after the download, download again.</li>
+    <li>The period is now <strong>closed</strong>. A declaration approved after the cut-off, or after the period was recorded as sent, is paid with the <strong>following month</strong>. A sheet already sent cannot be reopened.</li>
+  </ol>
+  <p><strong>Notifications.</strong> The employee sees a notice (and receives an e-mail when SMTP is configured) when: they submit or log something after the cut-off or for a closed period; their line manager approves it too late; their approved declarations are sent to Finance; or their submitted declaration is still waiting when the period is sent. Notices stay at the top of the pages until dismissed.</p>
+  <p>The following month, IT Procurement exports that period again and gets the expected month plus everything validated late, each late month in its own tab, with the approval dates listed on the Payroll page.</p>
 </section>
 
 <section class="card docs" id="ssl">
@@ -185,4 +257,6 @@ openssl s_client -connect timelog.corp.example.lu:443 -servername timelog.corp.e
     <li><strong>Settings</strong> in the <a href="/admin/settings">Settings</a> page switch features on or off: time in lieu, signature on submission, amounts visible to employees.</li>
   </ul>
 </section>
+</div>
+</div>
 {% endblock %}

@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% from "_macros.html" import empty_state %}
+{% block title %}Payroll{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><span class="eyebrow">IT Procurement</span><h1>Payroll reports</h1></div>
+  <div class="month-nav">
+    <a class="btn btn-ghost btn-icon" href="/payroll?year={{ prev[0] }}&month={{ prev[1] }}" aria-label="Previous payroll month">&larr;</a>
+    <span class="current">{{ month_label(year, month) }}</span>
+    <a class="btn btn-ghost btn-icon" href="/payroll?year={{ next[0] }}&month={{ next[1] }}" aria-label="Next payroll month">&rarr;</a>
+  </div>
+</div>
+
+{% for y, m in overdue %}
+<div class="banner banner-error"><strong>{{ month_label(y, m) }}</strong> has approved declarations that were never sent to Finance. <a href="/payroll?year={{ y }}&month={{ m }}">Open that period</a>.</div>
+{% endfor %}
+
+<section class="card">
+  <div class="sheet-head">
+    <h2>{{ month_label(year, month) }} payroll</h2>
+    {% if run %}<span class="badge badge-approved">sent to Finance</span>{% else %}<span class="badge badge-submitted">open</span>{% endif %}
+  </div>
+  {% if run %}
+  <p>Sent to Finance by <strong>{{ run.sent_by.full_name }}</strong> on <strong>{{ run.sent_at|datetime }}</strong>:
+    {{ run.oncall_sheets }} on-call and {{ run.overtime_sheets }} overtime sheet(s) of {{ run.employees }} employee(s).
+    {% if run.note %}<br><span class="muted">Note: {{ run.note }}</span>{% endif %}</p>
+  <p class="help">This period is closed: declarations approved from now on are paid with the following month. You can still download the reports to check what was sent.</p>
+  {% else %}
+  <p class="help">Finance cut-off: day {{ cutoff }} of the following month{% if deadline %} (<strong>{{ deadline|date }}</strong> for this period){% endif %}. Approvals after the cut-off, or after you record that the reports were sent, are paid with the following month and the employee is notified.</p>
+  {% endif %}
+  <div class="stats">
+    <div class="stat"><span class="label">On-call sheets</span><span class="value">{{ counts.oncall }}</span></div>
+    <div class="stat"><span class="label">Overtime sheets</span><span class="value">{{ counts.overtime }}</span></div>
+    <div class="stat"><span class="label">Employees</span><span class="value">{{ counts.employees }}</span></div>
+    <div class="stat"><span class="label">Late (earlier months)</span><span class="value">{{ late|length }}</span></div>
+  </div>
+</section>
+
+<section class="card">
+  <h2>1. Download the reports</h2>
+  <p class="help">Both reports cover the whole organisation. A tab per work month: this month, plus one tab per earlier month for anything validated late.</p>
+  <div class="actions-row">
+    <a class="btn btn-primary" href="/payroll/export/oncall?year={{ year }}&month={{ month }}">⤓ On-call report (.xlsx)</a>
+    <a class="btn btn-primary" href="/payroll/export/overtime?year={{ year }}&month={{ month }}">⤓ Overtime report (.xlsx)</a>
+    <a class="btn btn-ghost" href="/payroll/export/control?year={{ year }}&month={{ month }}">⤓ Detailed control export (.xlsx)</a>
+  </div>
+  <ul class="checklist">
+    {% for kind, label in [("oncall", "On-call report"), ("overtime", "Overtime report")] %}
+    {% set d = downloads[kind] %}
+    <li class="{{ 'ok' if d.current else 'ko' }}"><span class="mark">{{ '✓' if d.current else '✕' }}</span><strong>{{ label }}</strong>
+      <span class="small">{% if d.current %}downloaded {{ d.at|datetime }}, matches the current data{% elif d.at %}downloaded {{ d.at|datetime }}, but sheets were approved since: download it again{% else %}not downloaded yet{% endif %}</span></li>
+    {% endfor %}
+  </ul>
+</section>
+
+{% if not run %}
+<section class="card">
+  <h2>2. Record that the reports were sent</h2>
+  <p class="help">After you e-mailed both reports to Finance, record it here. The system logs that the approved declarations of this period were <strong>sent for payment</strong>, closes the period and tells the employees.</p>
+  <form method="post" action="/payroll/{{ year }}/{{ month }}/sent" data-confirm="Record that the {{ month_label(year, month) }} on-call and overtime reports were sent to Finance? The period will be closed.">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <label class="check" for="sent-confirm"><input type="checkbox" id="sent-confirm" name="confirm" value="1"> I sent the on-call and overtime reports of {{ month_label(year, month) }} to Finance</label>
+    <label for="sent-note">Reference or comment <span class="muted">(optional, for example the e-mail subject)</span>
+      <input id="sent-note" name="note" maxlength="500"></label>
+    <div class="actions"><button class="btn btn-primary" {% if not can_send %}disabled{% endif %}>Record as sent to Finance</button></div>
+    {% if not can_send %}<p class="help">{% if not (counts.oncall or counts.overtime) %}Nothing is approved for this period yet.{% else %}Download both reports first (and again if the data changed).{% endif %}</p>{% endif %}
+  </form>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>Included in {{ month_label(year, month) }}</h2>
+  {% if regular or late %}
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th scope="col">Employee</th><th scope="col">Type</th><th scope="col">Work month</th><th scope="col">Content</th><th scope="col">Approved</th><th scope="col">Sent</th></tr></thead>
+    <tbody>
+    {% for sh in late + regular %}
+      <tr class="{{ 'conflict-row' if sh.is_late }}">
+        <td><strong>{{ sh.user.full_name }}</strong></td>
+        <td>{{ "On-call" if sh.kind == "oncall" else "Overtime" }}{% if sh.seq > 1 %} <span class="tag">supplementary</span>{% endif %}</td>
+        <td>{{ month_label(sh.year, sh.month) }}{% if sh.is_late %} <span class="tag tag-late">late</span>{% endif %}</td>
+        <td>{{ summary(sh) }}</td>
+        <td class="small">{{ sh.decided_at|datetime }}</td>
+        <td class="small">{% if sh.sent_at %}{{ sh.sent_at|date }}{% else %}-{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  <p class="help">Rows for earlier months are the declarations validated late; they are listed first, with the date they were approved.</p>
+  {% else %}{{ empty_state("Nothing approved for this period yet.") }}{% endif %}
+</section>
+
+{% if waiting and not run %}
+<section class="card">
+  <h2>Still waiting for approval</h2>
+  <p class="help">These are not in the reports. If they are not approved before the cut-off or before you record the reports as sent, they are paid with the following month.</p>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th scope="col">Employee</th><th scope="col">Type</th><th scope="col">Work month</th><th scope="col">Line manager</th><th scope="col">Submitted</th></tr></thead>
+    <tbody>
+    {% for sh in waiting %}<tr><td>{{ sh.user.full_name }}</td><td>{{ "On-call" if sh.kind == "oncall" else "Overtime" }}</td><td>{{ month_label(sh.year, sh.month) }}</td><td>{{ sh.user.manager.full_name if sh.user.manager else "-" }}</td><td class="small">{{ sh.submitted_at|datetime }}</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>History</h2>
+  {% if runs %}
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th scope="col">Payroll</th><th scope="col">Sent</th><th scope="col">By</th><th scope="col" class="r">On-call</th><th scope="col" class="r">Overtime</th><th scope="col" class="r">Employees</th><th scope="col">Note</th></tr></thead>
+    <tbody>
+    {% for r in runs %}<tr><td><a href="/payroll?year={{ r.year }}&month={{ r.month }}">{{ month_label(r.year, r.month) }}</a></td><td class="small">{{ r.sent_at|datetime }}</td><td>{{ r.sent_by.full_name }}</td><td class="r">{{ r.oncall_sheets }}</td><td class="r">{{ r.overtime_sheets }}</td><td class="r">{{ r.employees }}</td><td class="small">{{ r.note }}</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}{{ empty_state("No payroll sent yet.") }}{% endif %}
+</section>
+{% endblock %}

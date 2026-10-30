@@ -42,14 +42,27 @@ def can_view_user(db: Session, viewer: User, target: User) -> bool:
     return target.id in subordinate_ids(db, viewer)
 
 
+def is_above(viewer: User, user: User) -> bool:
+    """True when `viewer` is somewhere above `user` in the management chain (direct manager or skip-level)."""
+    seen = {user.id}
+    node = user.manager
+    while node is not None and node.id not in seen:
+        if node.id == viewer.id:
+            return True
+        seen.add(node.id)
+        node = node.manager
+    return False
+
+
 def can_decide(viewer: User, sheet: Sheet) -> bool:
-    """Approve/reject: direct line manager or admin, never on one's own sheet."""
+    """Approve/reject: any manager above the employee (direct or skip-level) or an admin, never on one's own sheet."""
     if sheet.user_id == viewer.id:
         return False
-    return viewer.is_admin or sheet.user.manager_id == viewer.id
+    return viewer.is_admin or is_above(viewer, sheet.user)
 
 
-def can_export(db: Session, viewer: User) -> bool:
+def can_view_team(db: Session, viewer: User) -> bool:
+    """Statistics page: managers (their subtree) and administrators."""
     return viewer.is_admin or is_manager(db, viewer)
 
 

@@ -1,19 +1,20 @@
 import datetime as dt
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import PlainTextResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import calc, workflow
+from ..access import subordinate_ids
 from ..app_settings import can_see_amounts
 from ..calendar_utils import shift_month
 from ..db import get_db
-from ..models import KIND_ONCALL, KIND_OVERTIME, SUBMITTED, Sheet, User
-from ..security import current_user
+from ..models import KIND_ONCALL, KIND_OVERTIME, SUBMITTED, Notification, Sheet, User, utcnow
+from ..security import current_user, verify_csrf
 from ..version import BUILD
-from ..web import render
+from ..web import redirect, render
 
 router = APIRouter()
 
@@ -37,7 +38,7 @@ def dashboard(request: Request, me: User = Depends(current_user), db: Session = 
     ]
     pending_q = select(func.count(Sheet.id)).join(User, Sheet.user_id == User.id).where(Sheet.status == SUBMITTED)
     if not me.is_admin:
-        pending_q = pending_q.where(User.manager_id == me.id)
+        pending_q = pending_q.where(User.id.in_(subordinate_ids(db, me)))
     pending = db.scalar(pending_q) or 0
 
     this_month = list(db.scalars(select(Sheet).where(
@@ -52,3 +53,12 @@ def dashboard(request: Request, me: User = Depends(current_user), db: Session = 
     }
     return render(request, "dashboard.html", {"rows": rows, "pending": pending, "stats": stats,
                                               "show_amounts": can_see_amounts(db, me, me)})
+
+
+@router.post("/notices/{notice_id}/read", dependencies=[Depends(verify_csrf)])
+def dismiss_notice(notice_id: int, back: str = Form("/"), me: User = Depends(current_user), db: Session = Depends(get_db)):
+    notice = db.get(Notification, notice_id)
+    if notice is not None and notice.user_id == me.id and notice.read_at is None:
+        notice.read_at = utcnow()
+        db.commit()
+    return redirect(back if back.startswith("/") and not back.startswith("//") else "/")

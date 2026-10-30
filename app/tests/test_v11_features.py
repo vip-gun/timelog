@@ -1,4 +1,4 @@
-"""v1.1: title case, one submission for on-call + overtime, saved signature picture, 30-minute time dropdowns."""
+"""v1.1: title case, one submission for on-call + overtime, saved signature picture, 15-minute typed times."""
 from timelog.models import SavedSignature, Signature
 
 from test_v1_features import SIG, _ot, _sheets
@@ -14,11 +14,29 @@ def test_title_words_capitalised(browser, users):
     assert "<title>Timelog - Sign In</title>" in browser().get("/login").text
 
 
-def test_time_dropdowns_in_30_minute_steps(browser, users):
+def test_time_fields_accept_typing_and_suggest_15_minute_steps(browser, users):
     page = browser("alice").get("/overtime/2026/8").text
-    assert '<select name="start" required>' in page and '<select name="end" required>' in page
-    assert '<option value="00:30">' in page and '<option value="23:30">' in page and '<option value="24:00">' in page
-    assert '<option value="00:15">' not in page and 'type="time"' not in page
+    assert 'name="start"' in page and 'name="end"' in page and 'list="ot-times"' in page and 'type="time"' not in page
+    for value in ("00:00", "00:15", "08:45", "23:45", "24:00"):
+        assert f'<option value="{value}">' in page
+    assert '<option value="00:10">' not in page and "15-minute steps" in page
+
+
+def test_overtime_breakdown_by_day_type_day_and_night(browser, db, users):
+    alice = browser("alice")
+    alice.post("/overtime/entries", _ot("2026-08-12", "20:00", "23:00"))   # Wednesday: 2 h day + 1 h night
+    page = alice.get("/overtime/2026/8").text
+    assert "Day hours" in page and "Night hours" in page and "Factor day / night" in page
+    row = page.split("Weekday</th>")[1].split("</tr>")[0]
+    assert "2.00 h" in row and "1.00 h" in row and "3.00 h" in row and "&times;1.5 / &times;1.8" in row
+    assert "&times;2.2 / &times;2.5" in page and "&times;3.5 / &times;3.8" in page
+
+
+def test_documentation_shows_rates(browser, users):
+    page = browser("admin").get("/admin/docs").text
+    assert "Rates &amp; calculation" in page and 'id="rates"' in page
+    assert "STD" in page and "45.00" in page and "90.00" in page          # on-call rates of the default grade
+    assert "HL121" in page and "&times;3.8" in page and "100% + 50% + 200%" in page
 
 
 def test_one_submission_sends_oncall_and_overtime(browser, db, users):

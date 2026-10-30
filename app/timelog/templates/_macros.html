@@ -27,6 +27,7 @@
   {% if sheet.submitted_at %}<span>Submitted {{ sheet.submitted_at|datetime }}</span>{% endif %}
   {% if sheet.decided_at %}<span>· {{ sheet.status|capitalize }} by {{ sheet.decided_by.full_name if sheet.decided_by else "?" }} on {{ sheet.decided_at|datetime }}</span>{% endif %}
   {% if sheet.payroll_year %}<span>· Paid with payroll {{ month_label(sheet.payroll_year, sheet.payroll_month) }}</span>{% if sheet.is_late %} <span class="tag tag-late">Late claim</span>{% endif %}{% endif %}
+  {% if sheet.sent_at %}<span>· <span class="tag tag-ok">Sent to Finance {{ sheet.sent_at|date }}</span></span>{% elif sheet.status == "approved" %}<span>· not yet sent to Finance</span>{% endif %}
 {%- endmacro %}
 
 {# Signature pad shown in submission forms when signatures are required (JS: static/app.js).

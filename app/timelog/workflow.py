@@ -9,13 +9,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import calc
-from .app_settings import get_flag
+from .app_settings import get_flag, payroll_cutoff
 from .calendar_utils import day_type, holiday_set, month_bounds, month_label, shift_month
 from .config import Settings
 from .models import (
     APPROVED, DRAFT, EDITABLE_STATUSES, KIND_ONCALL, KIND_OVERTIME, PAID, REJECTED, SUBMITTED,
     SETTING_SIGNATURE_REQUIRED, SETTING_TIL_ENABLED, TIL, WEEKDAY, AuditLog, Grade, OnCallDay, OvertimeEntry,
-    OvertimeRule, Sheet, Signature, User, utcnow,
+    Notification, OvertimeRule, PayrollRun, PayrollRunItem, Sheet, Signature, User, utcnow,
 )
 
 
@@ -385,9 +385,15 @@ def decide(db: Session, s: Settings, sheet: Sheet, actor: User, approve: bool, c
     sheet.decision_comment = comment.strip()[:2000]
     if approve:
         sheet.payroll_year, sheet.payroll_month = calc.payroll_period(
-            sheet.year, sheet.month, sheet.decided_at.date(), s.payroll_cutoff_day)
+            sheet.year, sheet.month, sheet.decided_at.date(), payroll_cutoff(db, s), closed_periods(db))
     audit(db, actor, "approve" if approve else "reject", "sheet", sheet.id, comment=sheet.decision_comment,
-          payroll_period=f"{sheet.payroll_year}-{sheet.payroll_month:02d}" if approve else None)
+          payroll_period=f"{sheet.payroll_year}-{sheet.payroll_month:02d}" if approve else None,
+          skip_level=(not actor.is_admin and sheet.user.manager_id != actor.id) or None)
+    if approve and sheet.is_late:
+        notify_user(db, sheet.user, "late",
+                    f"Your {_kind_label(sheet)} for {month_label(sheet.year, sheet.month)} was approved on "
+                    f"{sheet.decided_at:%d/%m/%Y}, after the Finance cut-off: it will be paid with the "
+                    f"{month_label(sheet.payroll_year, sheet.payroll_month)} payroll, not with {month_label(sheet.year, sheet.month)}.")
 
 
 def reopen(db: Session, sheet: Sheet, actor: User, reason: str) -> None:
@@ -397,8 +403,144 @@ def reopen(db: Session, sheet: Sheet, actor: User, reason: str) -> None:
         raise WorkflowError("Only approved sheets can be reopened.")
     if not reason.strip():
         raise WorkflowError("A reason is required.")
+    if sheet.payroll_item is not None:
+        raise WorkflowError("This sheet was already sent to Finance for payment and can no longer be reopened.")
     if get_sheet(db, sheet.user, sheet.kind, sheet.year, sheet.month).id != sheet.id:
         raise WorkflowError("A supplementary sheet exists for this month - only the latest sheet can be reopened.")
     sheet.status = DRAFT
     sheet.payroll_year = sheet.payroll_month = None
     audit(db, actor, "reopen", "sheet", sheet.id, reason=reason.strip())
+
+
+# ------------------------------------------------------------------ payroll periods, notices, payment runs
+def _kind_label(sheet: Sheet) -> str:
+    return "on-call declaration" if sheet.kind == KIND_ONCALL else "overtime declaration"
+
+
+def notify_user(db: Session, user: User, kind: str, message: str) -> Notification:
+    n = Notification(user_id=user.id, kind=kind, message=message)
+    db.add(n)
+    return n
+
+
+def closed_periods(db: Session) -> Set[Tuple[int, int]]:
+    """Payroll periods already sent to Finance."""
+    return {(y, m) for y, m in db.execute(select(PayrollRun.year, PayrollRun.month))}
+
+
+def expected_period(db: Session, s: Settings, work_year: int, work_month: int,
+                    on: Optional[dt.date] = None) -> Tuple[int, int]:
+    """Payroll period a sheet of this work month would be paid in if it were approved on `on` (today)."""
+    return calc.payroll_period(work_year, work_month, on or dt.date.today(), payroll_cutoff(db, s), closed_periods(db))
+
+
+def approval_deadline(db: Session, s: Settings, work_year: int, work_month: int) -> Optional[dt.date]:
+    """Last day on which an approval is still paid with the work month itself (None: that period is closed)."""
+    if (work_year, work_month) in closed_periods(db):
+        return None
+    ny, nm = shift_month(work_year, work_month, 1)
+    return dt.date(ny, nm, payroll_cutoff(db, s))
+
+
+def timing_message(db: Session, s: Settings, work_year: int, work_month: int) -> Tuple[str, bool]:
+    """(text, is_late) telling when a sheet of this work month must be approved to be paid with that month."""
+    label = month_label(work_year, work_month)
+    expected = expected_period(db, s, work_year, work_month)
+    if expected != (work_year, work_month):
+        return (f"The Finance cut-off for {label} has passed: even if approved today it will be paid with the "
+                f"{month_label(*expected)} payroll.", True)
+    deadline = approval_deadline(db, s, work_year, work_month)
+    return (f"To be paid with the {label} payroll your line manager must approve it by {deadline:%d/%m/%Y}; "
+            "later approvals are paid the following month.", False)
+
+
+def warn_payroll_timing(db: Session, s: Settings, sheets: List[Sheet]) -> List[str]:
+    """After a submission: messages for the user; late ones are also kept as in-app notices."""
+    messages = []
+    for sheet in sheets:
+        text, late = timing_message(db, s, sheet.year, sheet.month)
+        text = f"{_kind_label(sheet).capitalize()} {month_label(sheet.year, sheet.month)}: {text}"
+        messages.append(text)
+        if late:
+            notify_user(db, sheet.user, "late", text)
+    return messages
+
+
+def period_sheets(db: Session, year: int, month: int, kind: Optional[str] = None) -> List[Sheet]:
+    """Approved sheets of the whole organisation paid in payroll period (year, month)."""
+    q = select(Sheet).where(Sheet.status == APPROVED, Sheet.payroll_year == year, Sheet.payroll_month == month)
+    if kind:
+        q = q.where(Sheet.kind == kind)
+    return list(db.scalars(q.order_by(Sheet.id)))
+
+
+def period_digest(sheets: List[Sheet]) -> str:
+    """Fingerprint of the set of sheets in a period: what a report contained."""
+    import hashlib
+
+    return hashlib.sha256(",".join(str(i) for i in sorted(s.id for s in sheets)).encode()).hexdigest()[:16]
+
+
+def mark_sent(db: Session, s: Settings, actor: User, year: int, month: int, note: str = "") -> PayrollRun:
+    """IT Procurement sent the reports of period (year, month) to Finance: log it and close the period."""
+    if not (actor.is_procurement or actor.is_admin):
+        raise WorkflowError("Only IT Procurement can record the payment run.")
+    if (year, month) in closed_periods(db):
+        raise WorkflowError(f"The {month_label(year, month)} payroll was already sent to Finance.")
+    sheets = [sh for sh in period_sheets(db, year, month) if sh.payroll_item is None]
+    if not sheets:
+        raise WorkflowError(f"There is nothing approved for the {month_label(year, month)} payroll: nothing to send.")
+    run = PayrollRun(year=year, month=month, sent_by_id=actor.id, note=note.strip()[:500],
+                     oncall_sheets=sum(1 for sh in sheets if sh.kind == KIND_ONCALL),
+                     overtime_sheets=sum(1 for sh in sheets if sh.kind == KIND_OVERTIME),
+                     employees=len({sh.user_id for sh in sheets}))
+    db.add(run)
+    db.flush()
+    for sh in sheets:
+        db.add(PayrollRunItem(run_id=run.id, sheet_id=sh.id))
+    audit(db, actor, "payroll_sent", "payroll_run", run.id, period=f"{year}-{month:02d}", oncall=run.oncall_sheets,
+          overtime=run.overtime_sheets, employees=run.employees, note=run.note)
+    # tell the employees: paid items are on their way, items still waiting for approval move to the next period
+    by_user: Dict[int, List[Sheet]] = {}
+    for sh in sheets:
+        by_user.setdefault(sh.user_id, []).append(sh)
+    for sh_list in by_user.values():
+        user = sh_list[0].user
+        what = " and ".join(sorted({_kind_label(x) + "s" for x in sh_list}))
+        notify_user(db, user, "info", f"Your approved {what} for the {month_label(year, month)} payroll were sent to "
+                                      f"Finance for payment on {run.sent_at:%d/%m/%Y}.")
+    nyear, nmonth = shift_month(year, month, 1)
+    waiting = db.scalars(select(Sheet).where(Sheet.status == SUBMITTED, (Sheet.year * 12 + Sheet.month) <= year * 12 + month))
+    for sh in waiting:
+        notify_user(db, sh.user, "late", f"Your {_kind_label(sh)} for {month_label(sh.year, sh.month)} is still waiting for "
+                                         f"approval, but the {month_label(year, month)} payroll was already sent: it will be "
+                                         f"paid with the {month_label(nyear, nmonth)} payroll at the earliest.")
+    return run
+
+
+def last_export(db: Session, actor: User, kind: str, year: int, month: int) -> Optional[Tuple[dt.datetime, str]]:
+    """(time, digest) of the actor's latest whole-organisation download of the on-call / overtime report of a period."""
+    rows = db.scalars(select(AuditLog).where(AuditLog.actor_id == actor.id, AuditLog.action == f"export_{kind}")
+                      .order_by(AuditLog.id.desc()).limit(60))
+    for row in rows:
+        try:
+            d = json.loads(row.details or "{}")
+        except ValueError:
+            continue
+        if d.get("period") == f"{year}-{month:02d}" and d.get("scope") == "all":
+            return row.at, d.get("digest", "")
+    return None
+
+
+def default_payroll_period(db: Session, s: Settings, today: Optional[dt.date] = None) -> Tuple[int, int]:
+    """The period IT Procurement most likely wants: the oldest unsent period holding approved sheets, else the
+    period an approval of last month's work would fall into today."""
+    today = today or dt.date.today()
+    closed = closed_periods(db)
+    unsent = sorted({(y, m) for y, m in db.execute(
+        select(Sheet.payroll_year, Sheet.payroll_month).where(Sheet.status == APPROVED, Sheet.payroll_year.is_not(None))
+        .distinct()) if (y, m) not in closed})
+    if unsent:
+        return unsent[0]
+    py, pm = shift_month(today.year, today.month, -1)
+    return calc.payroll_period(py, pm, today, payroll_cutoff(db, s), closed)

@@ -29,6 +29,7 @@
   </label>
   <label class="check"><input type="checkbox" name="manager_locked" value="1" {% if u and u.manager_locked %}checked{% endif %}> Lock manager (LDAP sync will not overwrite)</label>
   <label class="check"><input type="checkbox" name="is_expert" value="1" {% if u and u.is_expert %}checked{% endif %}> Expert (no overtime; on-call interventions double the daily rate)</label>
+  <label class="check"><input type="checkbox" name="is_procurement" value="1" {% if u and u.is_procurement %}checked{% endif %}> IT Procurement (downloads the payroll reports for the whole organisation and records that they were sent to Finance)</label>
   <label class="check"><input type="checkbox" name="is_admin" value="1" {% if u and u.is_admin %}checked{% endif %}> Administrator</label>
   <label class="check"><input type="checkbox" name="is_active" value="1" {% if not u or u.is_active %}checked{% endif %}> Active</label>
   {% if not u or u.auth_source == "local" %}
