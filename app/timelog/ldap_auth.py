@@ -58,7 +58,10 @@ def _connect(s: Settings, server, user: str, password: str):
     from ldap3 import Connection
     from ldap3.core.exceptions import LDAPBindError, LDAPException
 
-    conn = Connection(server, user=user, password=password, receive_timeout=s.ldap_timeout, raise_exceptions=False)
+    # auto_referrals=False: a search from the domain root makes AD answer with referrals (DomainDnsZones, other domains);
+    # ldap3 would follow them to hosts that may not resolve ("LDAPSocketOpenError: invalid server address").
+    conn = Connection(server, user=user, password=password, receive_timeout=s.ldap_timeout, raise_exceptions=False,
+                      auto_referrals=False)
     try:
         conn.open()
         if s.ldap_start_tls:
