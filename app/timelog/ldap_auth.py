@@ -121,7 +121,12 @@ def _find_user(s: Settings, svc, username: str):
     from ldap3.utils.conv import escape_filter_chars
 
     flt = s.ldap_user_filter.replace("{username}", escape_filter_chars(username))
-    svc.search(s.ldap_user_base_dn, flt, search_scope=SUBTREE, attributes=_attributes(s), size_limit=2)
+    ok = svc.search(s.ldap_user_base_dn, flt, search_scope=SUBTREE, attributes=_attributes(s), size_limit=2)
+    result = svc.result or {}
+    # size limit exceeded (4) is expected with size_limit=2; any other failure must not look like "no such user"
+    if not ok and result.get("result") not in (0, 4):
+        raise LdapUnavailable(f"search failed: {result.get('description')} - {result.get('message') or 'no detail'} "
+                              f"(base '{s.ldap_user_base_dn}', filter '{flt}')")
     return list(svc.entries)
 
 
@@ -172,7 +177,9 @@ def diagnose(s: Settings, username: str = "") -> Diagnosis:
             return Diagnosis(True, steps)
         entries = _find_user(s, svc, username)
         if len(entries) != 1:
-            steps.append(("Find user", False, f"{len(entries)} entries match the user filter (expected exactly 1)."))
+            flt = s.ldap_user_filter.replace("{username}", username)
+            steps.append(("Find user", False, f"{len(entries)} entries match the user filter (expected exactly 1). "
+                          f"Base '{s.ldap_user_base_dn}', filter '{flt}'."))
             return Diagnosis(False, steps)
         profile = _profile_from_entry(s, entries[0])
         steps.append(("Find user", True, profile.dn))

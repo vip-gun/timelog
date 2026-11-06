@@ -33,15 +33,21 @@ MEMBERS = {ALICE_DN: {"CN=Users", "CN=Experts"}}
 class Conn:
     def __init__(self):
         self.entries = []
+        self.result = {"result": 0, "description": "success", "message": ""}
+        self.fail = None   # an ldap3 result dict to simulate a failed search
 
     def search(self, search_base, search_filter, search_scope=None, attributes=None, size_limit=0):
         base, flt = search_base, search_filter  # same parameter names as ldap3.Connection.search
+        if self.fail:
+            self.entries, self.result = [], self.fail
+            return False
         if flt.startswith("(memberOf:"):
             self.entries = [Entry(base, {})] if flt.split(":=")[1].rstrip(")") in MEMBERS.get(base, ()) else []
         elif flt == "(objectClass=*)":
             self.entries = [BOSS] if base == BOSS_DN else []
         else:
             self.entries = [ALICE, BOSS] if "dup" in flt else ([ALICE] if "alice" in flt else [])
+        return bool(self.entries)
 
     def unbind(self):
         pass
@@ -162,3 +168,14 @@ def test_prepare_ldap_users_without_lookup_and_validation(browser, db, users):
     assert browser("manager").post("/admin/users/ldap", {"usernames": "x"}).status_code in (302, 303, 403, 404)
     db.expire_all()
     assert db.query(User).filter_by(username="x").count() == 0
+
+
+def test_diagnose_reports_a_failed_search_and_the_filter_used(ldap, monkeypatch):
+    d = ldap_auth.diagnose(ldap, "nobody")
+    assert not d.ok and "filter '(&(objectClass=user)(sAMAccountName=nobody))'" in d.steps[-1][2] and "Base 'DC=c'" in d.steps[-1][2]
+
+    conn = Conn()
+    conn.fail = {"result": 32, "description": "noSuchObject", "message": "0000208D: NameErr"}
+    monkeypatch.setattr(ldap_auth, "_connect", lambda *a: conn)
+    d = ldap_auth.diagnose(ldap, "alice")
+    assert not d.ok and "noSuchObject" in d.steps[-1][2] and "base 'DC=c'" in d.steps[-1][2]
