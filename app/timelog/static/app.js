@@ -12,6 +12,19 @@
     if (btn && btn.classList.contains("btn")) btn.classList.add("busy");
   });
 
+  // Bulk selection: <input type="checkbox" data-select-all="<name>"> toggles every checkbox of that name
+  document.querySelectorAll("[data-select-all]").forEach(function (all) {
+    var boxes = function () { return document.querySelectorAll('input[type="checkbox"][name="' + all.getAttribute("data-select-all") + '"]'); };
+    var count = function () {
+      var n = 0;
+      boxes().forEach(function (b) { if (b.checked) n++; });
+      document.querySelectorAll(".js-selected-count").forEach(function (el) { el.textContent = n; });
+    };
+    all.addEventListener("change", function () { boxes().forEach(function (b) { b.checked = all.checked; }); count(); });
+    boxes().forEach(function (b) { b.addEventListener("change", count); });
+    count();
+  });
+
   // Auto-submit selects: <select data-autosubmit>
   document.querySelectorAll("select[data-autosubmit]").forEach(function (sel) {
     sel.addEventListener("change", function () { sel.form.submit(); });

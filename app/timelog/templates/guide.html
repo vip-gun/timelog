@@ -8,11 +8,12 @@
 <div class="docs-layout">
 <nav class="subnav docs-toc" aria-label="Sections">
   <a href="#quick">The short version</a>
-  <a href="#oncall">Declaring on-call</a>
+  {% if oncall_enabled %}<a href="#oncall">Declaring on-call</a>{% endif %}
   <a href="#overtime">Declaring overtime</a>
-  <a href="#called">Called during on-call</a>
+  {% if oncall_enabled %}<a href="#called">Called during on-call</a>{% endif %}
   <a href="#submit">Submitting</a>
   <a href="#after">After you submit</a>
+  {% if is_manager or user.is_admin %}<a href="#manager">For managers</a>{% endif %}
   <a href="#late">Deadlines &amp; late claims</a>
   <a href="#faq">Questions &amp; problems</a>
 </nav>
@@ -20,21 +21,28 @@
 
 <section class="card docs" id="quick">
   <h2>The short version</h2>
-  <p>Each month you fill in up to two sheets, then send them to your line manager in one go.</p>
+  <p>Each month you fill in {{ "up to two sheets" if oncall_enabled and not user.is_expert else "one sheet" }}, then send {{ "them" if oncall_enabled and not user.is_expert else "it" }} to your line manager in one go.</p>
   <ol>
-    <li><strong>On-call</strong>: tick the days you were on call (or switch on a whole rotation week).</li>
-    <li><strong>Overtime</strong> (normal employees): add one entry per period worked, with start and end time and a short description.</li>
+    {% if oncall_enabled %}<li><strong>On-call</strong>: tick the days you were on call (or switch on a whole rotation week).</li>{% endif %}
+    {% if not user.is_expert %}<li><strong>Overtime</strong>: add one entry per period worked, with start and end time and a short description.</li>{% endif %}
     <li><strong>Submit</strong> the month. One button sends everything for that month to your manager.</li>
     <li>Your manager <strong>approves</strong> it, or <strong>rejects</strong> it with a comment. If rejected, fix it and submit again.</li>
   </ol>
   <p>The <a href="/">Dashboard</a> shows the status of your last six months at a glance:
     <em>not started</em>, <em>draft</em>, <em>submitted</em>, <em>rejected</em> or <em>approved</em>.</p>
+  {% if not oncall_enabled %}
+  <div class="callout"><span class="callout-title">Your team does overtime only</span>The team <strong>{{ user.team }}</strong> does not declare on-call duty, so there is no On-call page for you: you only declare <a href="#overtime">overtime</a>. If that is wrong, ask your manager or an administrator.</div>
+  {% endif %}
   {% if user.is_expert %}
   <div class="callout"><span class="callout-title">You are an Expert</span>you declare on-call only. There is no Overtime page for you; interventions are recorded on the on-call sheet (see <a href="#called">Called during on-call</a>).</div>
+  {% endif %}
+  {% if is_manager or user.is_admin %}
+  <div class="callout"><span class="callout-title">You manage people</span>Your own declarations work as described here; reviewing your team's sheets is covered in <a href="#manager">For managers</a>.</div>
   {% endif %}
   <div class="callout"><span class="callout-title">Privacy</span>Nobody but you and the managers above you can see your sheets. Colleagues never see each other's declarations.</div>
 </section>
 
+{% if oncall_enabled %}
 <section class="card docs" id="oncall">
   <h2>Declaring on-call</h2>
   <p>Open <a href="/oncall">On-call</a>. The page shows one month, with the days grouped by <strong>rotation week</strong>.
@@ -56,6 +64,7 @@
     A day with an intervention is paid at double rate, whatever its duration.</p>
   {% endif %}
 </section>
+{% endif %}
 
 {% if not user.is_expert %}
 <section class="card docs" id="overtime">
@@ -102,6 +111,7 @@
 </section>
 {% endif %}
 
+{% if oncall_enabled %}
 <section class="card docs" id="called">
   <h2>Called during on-call duty</h2>
   {% if user.is_expert %}
@@ -117,10 +127,11 @@
   <div class="callout"><span class="callout-title">Experts</span>Experts record interventions differently (on the on-call sheet, at a double daily rate), so what you see here applies to normal employees.</div>
   {% endif %}
 </section>
+{% endif %}
 
 <section class="card docs" id="submit">
   <h2>Submitting</h2>
-  <p>You submit <strong>once per month</strong>. The <strong>Submit</strong> panel is on both the On-call and Overtime pages.</p>
+  <p>You submit <strong>once per month</strong>. The <strong>Submit</strong> panel is on {{ "both the On-call and Overtime pages" if oncall_enabled and not user.is_expert else ("the On-call page" if oncall_enabled else "the Overtime page") }}.</p>
   <ol>
     <li>Check the totals on each page.</li>
     <li>Add a comment for your manager if useful.</li>
@@ -129,8 +140,8 @@
     {% endif %}
     <li>Press <strong>Submit</strong>.</li>
   </ol>
-  <p>Everything that is still editable for that month (on-call, overtime and any supplementary overtime sheet) is sent together.
-    On the on-call page, <em>Save &amp; submit for validation</em> saves the grid first.</p>
+  <p>Everything that is still editable for that month ({{ "on-call, " if oncall_enabled }}overtime and any supplementary overtime sheet) is sent together.
+    {% if oncall_enabled %}On the on-call page, <em>Save &amp; submit for validation</em> saves the grid first.{% endif %}</p>
   <div class="callout callout-warn"><span class="callout-title">All or nothing</span>If one sheet has a problem, for example weekend overtime that is neither on-call nor pre-approved, nothing is sent and the page tells you what to fix.</div>
   <p>Changed your mind or spotted a mistake? While a sheet is <em>submitted</em> and not yet decided, use <strong>Withdraw submission</strong> to go back to a draft.</p>
 </section>
@@ -150,10 +161,39 @@
   <p>Messages about your sheets (late payment, payment sent to Finance) appear as banners at the top of every page until you press <strong>Dismiss</strong>, and as an e-mail when mail is configured.</p>
 </section>
 
+{% if is_manager or user.is_admin %}
+<section class="card docs" id="manager">
+  <h2>For managers</h2>
+  <p>You review the sheets of everyone below you in the hierarchy: your direct reports and, <strong>skip-level</strong>, their reports too
+    (for example when their manager is away). Colleagues outside your branch are never visible to you.</p>
+  <ol>
+    <li>Open <a href="/approvals">Approvals</a>: submitted sheets waiting for a decision, oldest first. The dashboard shows how many are waiting.</li>
+    <li>Open a sheet, check it and press <strong>Approve</strong>, or <strong>Reject</strong> with a comment the employee will read. Nobody approves their own sheet.</li>
+    <li><a href="/team">Statistics</a> shows the status and totals of your team month by month. It has no downloads: the Finance reports come from IT Procurement.</li>
+  </ol>
+  <h3>What to look at</h3>
+  <ul>
+    <li><strong>On-call conflicts</strong>: a red banner and highlighted days appear when another employee has the same day on a submitted or approved sheet. Two people cannot cover the same day; approval is not blocked, you decide. Colleagues outside your team are counted, not named.</li>
+    <li><strong>Weekend and holiday overtime</strong> is accepted only on an on-call day or when the employee ticked <em>pre-approved</em>: tick it only for work you agreed to.</li>
+    <li><strong>Late claims</strong>: an approval after the Finance cut-off (see the dates under <a href="#late">Deadlines</a>) is paid with the next payroll. The employee is told automatically.</li>
+  </ul>
+  <h3>Teams that do overtime only</h3>
+  <p>Some teams do not declare on-call duty. Their members have no On-call page and you will only see overtime sheets for them. Which teams those are is set by an administrator under Admin › Teams{% if user.is_admin %} (<a href="/admin/teams">open</a>){% endif %}.</p>
+  {% if user.is_admin %}
+  <h3>Administrators</h3>
+  <p>Admin › <a href="/admin/teams">Teams</a> creates and renames teams and switches on-call on or off per team. Admin › <a href="/admin/users">Users</a> lets you tick several people and set their team, line manager, Expert flag or grade in one go (<em>Bulk edit</em>). The Administrator's reference is under Admin › <a href="/admin/docs">Documentation</a>.</p>
+  {% endif %}
+</section>
+{% endif %}
+
 <section class="card docs" id="late">
   <h2>Deadlines &amp; late claims</h2>
-  <p>Finance processes each month after a <strong>cut-off</strong>: <strong>day {{ payroll_cutoff }} of the following month</strong>.
-    A sheet that is <strong>approved</strong> by then is paid with the month you worked.</p>
+  <p>Finance processes each month after a <strong>cut-off date</strong>. A sheet that is <strong>approved</strong> on or before the cut-off date of its month is paid with the month you worked.</p>
+  <table class="table">
+    <thead><tr><th scope="col">Work month</th><th scope="col">Must be approved by</th></tr></thead>
+    <tbody>{% for y, m, d, custom in cutoffs %}<tr><th scope="row">{{ month_label(y, m) }}</th><td>{{ d|date }}</td></tr>{% endfor %}</tbody>
+  </table>
+  <p class="help">Your manager needs time to approve, so submit as early as you can after the month ends.</p>
   <ul>
     <li>Submit early in the month after the one you worked, so your manager has time to approve before the cut-off.</li>
     <li>If the approval comes after the cut-off, or the month was already sent to Finance, the sheet is a <strong>late claim</strong> and is paid with the <strong>next</strong> payroll. You are notified. Nothing is lost; it is only paid later.</li>
@@ -164,6 +204,10 @@
 <section class="card docs" id="faq">
   <h2>Questions &amp; problems</h2>
   <dl class="faq">
+    {% if not oncall_enabled %}
+    <dt>There is no On-call menu.</dt>
+    <dd>Your team (<strong>{{ user.team }}</strong>) does overtime only. Existing on-call sheets, if you had any, remain visible from the dashboard. Ask an administrator if your team should declare on-call.</dd>
+    {% endif %}
     <dt>I cannot see an Overtime menu.</dt>
     <dd>Experts do not declare overtime. If you are not an Expert and the menu is missing, ask an administrator to check your profile.</dd>
     <dt>"Weekend/holiday overtime must be on an on-call day or pre-approved."</dt>

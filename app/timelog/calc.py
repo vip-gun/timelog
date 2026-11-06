@@ -2,7 +2,7 @@
 import datetime as dt
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Dict, Iterable, List, Tuple
+from typing import Callable, Dict, Iterable, List, Tuple, Union
 
 from .models import DAY_TYPES, HOLIDAY, PAID, SUNDAY, TIL
 
@@ -48,21 +48,27 @@ def validate_step(minute: int, step: int) -> None:
         raise ValueError(f"Overtime is recorded in {step}-minute steps: times must end in {marks}.")
 
 
-def payroll_period(work_year: int, work_month: int, approved: dt.date, cutoff_day: int,
-                   closed: Iterable[Tuple[int, int]] = ()) -> Tuple[int, int]:
-    """Payroll month of a sheet approved on `approved`.
+def default_cutoff_date(year: int, month: int, day: int) -> dt.date:
+    """Fixed-pattern cut-off of payroll month (year, month): `day` of the following month."""
+    return dt.date(year + (month == 12), month % 12 + 1, day)
 
-    Approvals up to `cutoff_day` of month X+1 are paid with month X; later approvals with the approval month. Never
-    earlier than the month the work was done. A period already sent to Finance (`closed`) accepts nothing more: the
-    sheet moves on to the next period. Late claims (e.g. August overtime approved on 20 October) therefore land in the
-    next payroll export that is still open.
+
+def payroll_period(work_year: int, work_month: int, approved: dt.date, cutoff: Union[int, Callable[[int, int], dt.date]],
+                   closed: Iterable[Tuple[int, int]] = ()) -> Tuple[int, int]:
+    """Payroll month of a sheet approved on `approved`: the first open period, not before the work month, whose
+    cut-off date has not passed.
+
+    `cutoff` is either a day number (cut-off = that day of the month after the period) or a function
+    (year, month) -> cut-off date of that payroll month (explicit dates set per month). A period already sent to
+    Finance (`closed`) accepts nothing more: the sheet moves on to the next period. Late claims (e.g. August overtime
+    approved on 20 October) therefore land in the next payroll export that is still open.
     """
-    y, m = approved.year, approved.month
-    if approved.day <= cutoff_day:
-        y, m = (y, m - 1) if m > 1 else (y - 1, 12)
-    period = max((y, m), (work_year, work_month))
+    if isinstance(cutoff, int):
+        day = cutoff
+        cutoff = lambda y, m: default_cutoff_date(y, m, day)   # noqa: E731
     closed = set(closed)
-    while period in closed:
+    period = (work_year, work_month)
+    while period in closed or approved > cutoff(*period):
         period = (period[0], period[1] + 1) if period[1] < 12 else (period[0] + 1, 1)
     return period
 

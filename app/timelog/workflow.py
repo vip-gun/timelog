@@ -9,9 +9,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import calc
-from .app_settings import get_flag, payroll_cutoff
+from .app_settings import cutoff_rule, get_flag
 from .calendar_utils import day_type, holiday_set, month_bounds, month_label, shift_month
 from .config import Settings
+from .teams import oncall_enabled
 from .models import (
     APPROVED, DRAFT, EDITABLE_STATUSES, KIND_ONCALL, KIND_OVERTIME, PAID, REJECTED, SUBMITTED,
     SETTING_SIGNATURE_REQUIRED, SETTING_TIL_ENABLED, TIL, WEEKDAY, AuditLog, Grade, OnCallDay, OvertimeEntry,
@@ -344,6 +345,8 @@ def month_submittable(db: Session, user: User, year: int, month: int) -> List[Sh
     for kind in (KIND_ONCALL, KIND_OVERTIME):
         if kind == KIND_OVERTIME and user.is_expert:
             continue
+        if kind == KIND_ONCALL and not oncall_enabled(db, user):
+            continue
         for sheet in get_sheets(db, user, kind, year, month):
             if sheet.editable and (sheet.oncall_days if kind == KIND_ONCALL else sheet.overtime_entries):
                 sheets.append(sheet)
@@ -385,7 +388,7 @@ def decide(db: Session, s: Settings, sheet: Sheet, actor: User, approve: bool, c
     sheet.decision_comment = comment.strip()[:2000]
     if approve:
         sheet.payroll_year, sheet.payroll_month = calc.payroll_period(
-            sheet.year, sheet.month, sheet.decided_at.date(), payroll_cutoff(db, s), closed_periods(db))
+            sheet.year, sheet.month, sheet.decided_at.date(), cutoff_rule(db, s), closed_periods(db))
     audit(db, actor, "approve" if approve else "reject", "sheet", sheet.id, comment=sheet.decision_comment,
           payroll_period=f"{sheet.payroll_year}-{sheet.payroll_month:02d}" if approve else None,
           skip_level=(not actor.is_admin and sheet.user.manager_id != actor.id) or None)
@@ -431,15 +434,14 @@ def closed_periods(db: Session) -> Set[Tuple[int, int]]:
 def expected_period(db: Session, s: Settings, work_year: int, work_month: int,
                     on: Optional[dt.date] = None) -> Tuple[int, int]:
     """Payroll period a sheet of this work month would be paid in if it were approved on `on` (today)."""
-    return calc.payroll_period(work_year, work_month, on or dt.date.today(), payroll_cutoff(db, s), closed_periods(db))
+    return calc.payroll_period(work_year, work_month, on or dt.date.today(), cutoff_rule(db, s), closed_periods(db))
 
 
 def approval_deadline(db: Session, s: Settings, work_year: int, work_month: int) -> Optional[dt.date]:
     """Last day on which an approval is still paid with the work month itself (None: that period is closed)."""
     if (work_year, work_month) in closed_periods(db):
         return None
-    ny, nm = shift_month(work_year, work_month, 1)
-    return dt.date(ny, nm, payroll_cutoff(db, s))
+    return cutoff_rule(db, s)(work_year, work_month)
 
 
 def timing_message(db: Session, s: Settings, work_year: int, work_month: int) -> Tuple[str, bool]:
@@ -543,4 +545,4 @@ def default_payroll_period(db: Session, s: Settings, today: Optional[dt.date] = 
     if unsent:
         return unsent[0]
     py, pm = shift_month(today.year, today.month, -1)
-    return calc.payroll_period(py, pm, today, payroll_cutoff(db, s), closed)
+    return calc.payroll_period(py, pm, today, cutoff_rule(db, s), closed)

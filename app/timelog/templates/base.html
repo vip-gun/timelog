@@ -29,7 +29,7 @@
   <a class="brand" href="/">{{ brand_mark() }}{{ settings.app_name }}</a>
   <nav>
     <a href="/" class="{{ 'active' if path == '/' }}">Dashboard</a>
-    <a href="/oncall" class="{{ 'active' if path.startswith('/oncall') }}">On-call</a>
+    {% if oncall_enabled %}<a href="/oncall" class="{{ 'active' if path.startswith('/oncall') }}">On-call</a>{% endif %}
     {% if not user.is_expert %}<a href="/overtime" class="{{ 'active' if path.startswith('/overtime') }}">Overtime</a>{% endif %}
     {% if is_manager or user.is_admin %}
       <a href="/approvals" class="{{ 'active' if path.startswith('/approvals') }}">Approvals</a>
@@ -40,7 +40,6 @@
   </nav>
   {% if user.is_admin %}<a class="admin-link {{ 'active' if path.startswith('/admin') }}" href="/admin/users">Admin</a>{% endif %}
   <div class="who">
-    <span class="avatar" title="{{ user.full_name }}">{{ (user.first_name[:1] ~ user.last_name[:1]) | upper or user.username[:2] | upper }}</span>
     <span class="name">{{ user.full_name }}{% if user.is_expert %} <span class="tag">Expert</span>{% endif %}{% if user.is_admin %} <span class="tag">Admin</span>{% endif %}</span>
     <form method="post" action="/logout" class="inline">
       <input type="hidden" name="csrf_token" value="{{ csrf }}">

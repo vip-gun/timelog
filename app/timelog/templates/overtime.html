@@ -79,7 +79,7 @@
         <td class="r">{% if e.compensation == "TIL" %}{{ e.til_credit|hours }}{% endif %}</td>
         {% endif %}
         {% set on_call = (e.date in oncall_dates) if b.sheet.editable else e.on_call_intervention %}
-        <td class="small">{% if on_call %}<span class="tag tag-oncall" title="Detected from your on-call sheet">On-call</span>{% endif %}{% if e.preapproved %} <span class="tag">Pre-approved</span>{% endif %}
+        <td class="small">{% if on_call %}<span class="tag tag-oncall" title="Detected from your on-call sheet">On-call</span>{% endif %}{% if e.preapproved %} <span class="tag tag-preapproved" title="Declared as requested / pre-approved by the manager">Pre-approved</span>{% endif %}
           {% if b.sheet.editable and e.day_type != 'W' and not on_call and not e.preapproved %}<span class="warn" title="Weekend/holiday overtime that is neither on an on-call day nor pre-approved: it cannot be submitted">⚠</span>{% endif %}</td>
         <td>{{ e.incident_ref }}</td>
         <td class="desc">{{ e.description }}</td>

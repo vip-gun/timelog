@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Teams{% endblock %}
+{% block content %}
+{% include "admin/_nav.html" %}
+<div class="row-between">
+  <h1>Teams</h1>
+  <div class="actions"><a class="btn btn-ghost" href="/admin/users">Users &amp; bulk edit</a></div>
+</div>
+<p class="help">A user's team is a free-text field (filled from the directory for LDAP users). Here you manage the teams themselves: rename one, create an empty one, and decide whether the team <strong>declares on-call</strong>.
+  A team with on-call switched off does <strong>overtime only</strong>: its members have no On-call page, no on-call line in the Finance export and no on-call section in their User Guide. Sheets that already exist stay visible.
+  To move people between teams, select them in <a href="/admin/users">Users</a> and use <em>Bulk edit</em>.</p>
+<div class="table-wrap">
+<table class="table animate">
+  <thead><tr><th scope="col">Team</th><th scope="col">Members</th><th scope="col">Experts</th><th scope="col">Line managers</th><th scope="col">Rename / on-call</th></tr></thead>
+  <tbody>
+  {% for t in teams %}
+    <tr>
+      <td><a href="/admin/users?team={{ t.name|urlencode }}">{{ t.name }}</a>{% if not t.oncall %} <span class="tag">Overtime only</span>{% endif %}</td>
+      <td>{{ t.members }}</td>
+      <td>{{ t.experts }}</td>
+      <td>{{ t.managers|join(", ") if t.managers else "—" }}</td>
+      <td>
+        {% set p = "t" ~ loop.index ~ "-" %}
+        <form method="post" action="/admin/teams/save" class="row-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <input type="hidden" name="name" value="{{ t.name }}">
+          <label class="sr-only" for="{{ p }}name">Team name</label><input id="{{ p }}name" name="new_name" value="{{ t.name }}" required>
+          <label class="check"><input type="checkbox" name="oncall" value="1" {% if t.oncall %}checked{% endif %}> on-call</label>
+          <button class="btn btn-ghost btn-sm">Save</button>
+        </form>
+        {% if not t.members %}
+        <form method="post" action="/admin/teams/delete" class="inline" data-confirm="Delete the empty team {{ t.name }}?">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="name" value="{{ t.name }}">
+          <button class="btn btn-ghost btn-sm">Delete</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="5" class="muted">No team yet: create one below or type a team in a user's profile.</td></tr>
+  {% endfor %}
+  {% if no_team %}
+    <tr><td><a href="/admin/users?team={{ no_team_key }}">(no team)</a></td><td>{{ no_team }}</td><td colspan="3" class="muted">Users without a team always have on-call.</td></tr>
+  {% endif %}
+  </tbody>
+</table>
+</div>
+<form method="post" action="/admin/teams/create" class="card row-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <h2>New team</h2>
+  <label class="sr-only" for="new-team">Team name</label><input id="new-team" name="name" placeholder="Team name" required>
+  <label class="check"><input type="checkbox" name="oncall" value="1" checked> declares on-call</label>
+  <button class="btn btn-primary">Create team</button>
+</form>
+<p class="help">Experts only declare on-call, so on-call cannot be switched off for a team that has Experts, and an Expert cannot be moved into an overtime-only team. For LDAP users, a team renamed or assigned here is locked against the directory value (<em>Lock team</em> in the user's profile).</p>
+{% endblock %}

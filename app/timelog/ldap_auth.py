@@ -230,7 +230,7 @@ def _upsert(db: Session, p: LdapProfile) -> User:
         user.ldap_dn = p.dn
     for attr in ("first_name", "last_name", "display_name", "email", "employee_id", "team"):
         val = getattr(p, attr)
-        if val:
+        if val and not (attr == "team" and user.team_locked):
             setattr(user, attr, val)
     return user
 

@@ -56,6 +56,7 @@ def render(request: Request, name: str, ctx: Optional[dict] = None, status_code:
         user=getattr(request.state, "user", None),
         is_manager=getattr(request.state, "is_manager", False),
         features=getattr(request.state, "features", {"til": True, "signature": False}),
+        oncall_enabled=getattr(request.state, "oncall_enabled", True),
         csrf=csrf_token(request),
         payroll_cutoff=getattr(request.state, "payroll_cutoff", get_settings().payroll_cutoff_day),
         notices=getattr(request.state, "notices", []),

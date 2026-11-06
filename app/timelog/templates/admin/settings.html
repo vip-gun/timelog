@@ -45,7 +45,10 @@
     <label>Finance cut-off: day of the following month
       <input type="number" name="payroll_cutoff" min="1" max="28" value="{{ payroll_cutoff }}" required></label>
   </div>
-  <p class="help">Sheets approved up to this day of the following month are paid with their work month (generally the 5th). Later approvals, and late submissions, are paid with the following month, and the employee is notified. IT Procurement closes a period by recording that the reports were sent to Finance (Payroll page); from then on nothing more is added to it.</p>
+  <p class="help">This is the <strong>default</strong> pattern, used for every month without an explicit date. Finance usually sets one specific date per month: enter them in the
+    <a href="/payroll/cutoffs">cut-off calendar</a> (also open to IT Procurement). Upcoming cut-offs:
+    {% for y, m, d, custom in cutoff_schedule %}{{ month_label(y, m) }}: <strong>{{ d|date }}</strong>{% if custom %} (set){% endif %}{{ "; " if not loop.last }}{% endfor %}.</p>
+  <p class="help">Sheets approved up to the cut-off of a payroll month are paid with it (default pattern: this day of the following month, generally the 5th). Later approvals, and late submissions, are paid with the following month, and the employee is notified. IT Procurement closes a period by recording that the reports were sent to Finance (Payroll page); from then on nothing more is added to it.</p>
 
   <h2>On-call rotation</h2>
   <div class="form-grid">

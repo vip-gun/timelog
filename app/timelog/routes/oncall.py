@@ -6,7 +6,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import workflow
+from .. import teams, workflow
 from ..app_settings import can_see_amounts, oncall_week
 from ..calendar_utils import (
     day_type, holiday_names, month_bounds, month_days, month_label, rotation_week, rotation_week_start,
@@ -39,6 +39,10 @@ def view(request: Request, year: int, month: int, user_id: Optional[int] = None,
     week_start, handover = oncall_week(db, s)
     target = resolve_target(db, me, user_id)
     sheet = workflow.get_sheet(db, target, KIND_ONCALL, year, month)
+    oncall_off = not teams.oncall_enabled(db, target)
+    if oncall_off and sheet is None:
+        flash(request, teams.oncall_disabled_message(target), "info")
+        return redirect("/")
     start, end = month_bounds(year, month)
     names = holiday_names(db, start, end)
     holidays = set(names)
@@ -97,7 +101,8 @@ def view(request: Request, year: int, month: int, user_id: Optional[int] = None,
         "show_amounts": can_see_amounts(db, me, target),
         "week_start_name": WEEKDAY_NAMES[week_start], "week_handover": handover,
         "week_end_name": WEEKDAY_NAMES[(week_start + 6) % 7],
-        **sheet_permissions(me, target, sheet),
+        **{**sheet_permissions(me, target, sheet), **({"editable": False} if oncall_off else {})},
+        "oncall_off": oncall_off,
         **(submission_context(db, me, year, month) if me.id == target.id else {}),
     })
 
@@ -106,6 +111,9 @@ def view(request: Request, year: int, month: int, user_id: Optional[int] = None,
 async def save(request: Request, year: int, month: int, background: BackgroundTasks,
                me: User = Depends(current_user), db: Session = Depends(get_db)):
     check_month(year, month)
+    if not teams.oncall_enabled(db, me):
+        flash(request, teams.oncall_disabled_message(me), "error")
+        return redirect("/")
     s = get_settings()
     week_start, _handover = oncall_week(db, s)
     form = await request.form()

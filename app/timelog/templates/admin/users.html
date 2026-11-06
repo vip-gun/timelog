@@ -9,16 +9,56 @@
     <a class="btn btn-primary" href="/admin/users/new">New local user</a>
   </div>
 </div>
-<form method="get" class="inline-form"><input type="hidden" name="archived" value="{{ 1 if archived else 0 }}"><label class="sr-only" for="user-search">Search users</label><input id="user-search" name="q" value="{{ q }}" placeholder="Search name, username, team"> <button class="btn btn-ghost">Search</button></form>
+<form method="get" class="inline-form"><input type="hidden" name="archived" value="{{ 1 if archived else 0 }}"><label class="sr-only" for="user-search">Search users</label><input id="user-search" name="q" value="{{ q }}" placeholder="Search name, username, team">
+  <label class="sr-only" for="team-filter">Team</label>
+  <select id="team-filter" name="team" data-autosubmit>
+    <option value="">All teams</option>
+    <option value="{{ no_team }}" {% if team == no_team %}selected{% endif %}>(no team)</option>
+    {% for t in teams %}<option value="{{ t }}" {% if team|lower == t|lower %}selected{% endif %}>{{ t }}</option>{% endfor %}
+  </select>
+  <button class="btn btn-ghost">Search</button></form>
+
+{% if users and not archived %}
+<form method="post" action="/admin/users/bulk" id="bulk-form" class="card bulk-bar">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <input type="hidden" name="back" value="{{ request.url.path }}{{ '?' ~ request.url.query if request.url.query }}">
+  <h2>Bulk edit <span class="muted small">(<span class="js-selected-count">0</span> selected; tick users below, fill in only what should change)</span></h2>
+  <div class="form-grid">
+    <label>Team <input name="team" list="bulk-team-list" autocomplete="off" placeholder="no change"></label>
+    <datalist id="bulk-team-list">{% for t in teams %}<option value="{{ t }}">{% endfor %}</datalist>
+    <label class="check"><input type="checkbox" name="clear_team" value="1"> Remove from their team</label>
+    <label>Line manager
+      <select name="manager_id">
+        <option value="">— no change —</option>
+        <option value="__none__">— no manager —</option>
+        {% for m in managers %}<option value="{{ m.id }}">{{ m.full_name }} ({{ m.username }})</option>{% endfor %}
+      </select>
+    </label>
+    <label>Expert
+      <select name="is_expert"><option value="">— no change —</option><option value="1">Set as Expert</option><option value="0">Remove Expert</option></select>
+    </label>
+    <label>Grade
+      <select name="grade_id">
+        <option value="">— no change —</option>
+        <option value="__default__">default grade</option>
+        {% for g in grades %}<option value="{{ g.id }}">{{ g.code }} – {{ g.name }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="check"><input type="checkbox" name="lock" value="1" checked> Lock what I change for LDAP users (manager, team) against directory sync</label>
+  </div>
+  <div class="actions"><button class="btn btn-primary" data-confirm="Apply these changes to the selected users?">Apply to selected</button></div>
+</form>
+{% endif %}
 <div class="table-wrap">
 <table class="table animate">
-  <thead><tr><th scope="col">Username</th><th scope="col">Name</th><th scope="col">Team</th><th scope="col">Manager</th><th scope="col">Grade</th><th scope="col">Source</th><th scope="col">Flags</th><th scope="col">Last login</th></tr></thead>
+  <thead><tr>{% if not archived %}<th scope="col"><input type="checkbox" data-select-all="user_ids" aria-label="Select all users shown"></th>{% endif %}<th scope="col">Username</th><th scope="col">Name</th><th scope="col">Team</th><th scope="col">Manager</th><th scope="col">Grade</th><th scope="col">Source</th><th scope="col">Flags</th><th scope="col">Last login</th></tr></thead>
   <tbody>
   {% for u in users %}
     <tr class="{{ '' if u.is_active else 'inactive' }}">
+      {% if not archived %}<td><input type="checkbox" name="user_ids" value="{{ u.id }}" form="bulk-form" aria-label="Select {{ u.username }}"></td>{% endif %}
       <td><a href="/admin/users/{{ u.id }}">{{ u.username }}</a></td>
       <td>{{ u.full_name }}</td>
-      <td>{{ u.team }}</td>
+      <td>{{ u.team }}{% if u.team|trim|lower in oncall_off %} <span class="tag">No on-call</span>{% endif %}{% if u.team_locked %} 🔒{% endif %}</td>
       <td>{{ u.manager.full_name if u.manager else "—" }}{% if u.manager_locked %} 🔒{% endif %}</td>
       <td>{{ u.grade.code if u.grade else "default" }}</td>
       <td>{{ u.auth_source }}</td>

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Cut-off Calendar{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><span class="eyebrow">Payroll</span><h1>Cut-off calendar {{ year }}</h1></div>
+  <div class="actions">
+    <a class="btn btn-ghost" href="/payroll">Payroll</a>
+    <a class="btn btn-ghost" href="/payroll/cutoffs?year={{ year - 1 }}">&larr; {{ year - 1 }}</a>
+    <a class="btn btn-ghost" href="/payroll/cutoffs?year={{ year + 1 }}">{{ year + 1 }} &rarr;</a>
+  </div>
+</div>
+<p class="help">One date per payroll month: a sheet <strong>approved on or before</strong> that date is paid with that month; a later approval is paid with the following month and the employee is notified.
+  Leave a date empty to use the default pattern (day {{ day }} of the following month{% if user.is_admin %}, set in <a href="/admin/settings">Admin &rsaquo; Settings</a>{% endif %}).
+  Changing a date affects sheets approved from now on; sheets already approved keep their payroll month. Months already sent to Finance are locked.</p>
+<form method="post" action="/payroll/cutoffs" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <input type="hidden" name="year" value="{{ year }}">
+  <div class="table-wrap">
+  <table class="table animate">
+    <thead><tr><th scope="col">Payroll month</th><th scope="col">Cut-off date</th><th scope="col">Default pattern</th><th scope="col">Status</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <th scope="row">{{ r.label }}</th>
+        <td><label class="sr-only" for="d_{{ r.month }}">Cut-off date for {{ r.label }}</label>
+          <input type="date" id="d_{{ r.month }}" name="d_{{ r.month }}" value="{{ r.date.isoformat() if r.date }}" {% if r.closed %}disabled{% endif %}></td>
+        <td class="muted">{{ r.default|date }}{% if not r.date %} <span class="tag">in use</span>{% endif %}</td>
+        <td>{% if r.closed %}<span class="badge badge-approved">sent to Finance</span>{% elif r.date %}<span class="tag">custom</span>{% else %}<span class="muted">default</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <div class="actions"><button class="btn btn-primary">Save calendar</button></div>
+</form>
+{% endblock %}

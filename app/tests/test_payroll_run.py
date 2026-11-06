@@ -218,7 +218,7 @@ def test_admin_menu_order(browser, users):
     html = browser("admin").get("/admin/settings").text
     menu = html.split('<nav class="subnav">')[1].split("</nav>")[0]
     labels = [t.strip().replace("&amp;", "&") for t in __import__("re").findall(r"<a[^>]*>([^<]+)</a>", menu)]
-    assert labels == ["Documentation", "Settings", "Users", "Grades & on-call rates", "Legal holidays", "TIL factors", "Backup", "Audit log"]
+    assert labels == ["Documentation", "Settings", "Users", "Teams", "Grades & on-call rates", "Legal holidays", "TIL factors", "Backup", "Audit log"]
 
 
 def test_skip_level_approval(browser, db, users):
@@ -249,3 +249,31 @@ def test_skip_level_approval(browser, db, users):
     assert first.status == second.status == "approved" and first.decided_by.username == "head"
     flags = {a.actor.username: ('"skip_level": true' in a.details) for a in db.query(AuditLog).filter_by(action="approve")}
     assert flags == {"head": True, "manager": False}                         # the audit log tells skip-level from direct approvals
+
+
+def test_cutoff_calendar_editable_by_procurement_and_admin(browser, db, users):
+    from timelog.models import AuditLog, PayrollCutoff
+    from timelog.app_settings import cutoff_rule
+    from timelog.config import get_settings
+    _procurement(db)
+    proc, admin, mgr = browser("proc"), browser("admin"), browser("manager")
+    assert mgr.get("/payroll/cutoffs").status_code == 404 and mgr.post("/payroll/cutoffs", {"year": "2026"}).status_code == 404
+    page = proc.get("/payroll/cutoffs?year=2026")
+    assert page.status_code == 200 and 'name="d_8"' in page.text
+    r = proc.post("/payroll/cutoffs", {"year": "2026", "d_8": "2026-09-22", "d_9": "2026-10-02"})
+    assert r.status_code == 303
+    db.expire_all()
+    assert {(c.year, c.month): c.cutoff_date.isoformat() for c in db.query(PayrollCutoff)} == {(2026, 8): "2026-09-22", (2026, 9): "2026-10-02"}
+    rule = cutoff_rule(db, get_settings())
+    assert rule(2026, 8).isoformat() == "2026-09-22" and rule(2026, 10).day == 5         # month without a date: default pattern
+    assert db.query(AuditLog).filter_by(action="payroll_cutoffs_update").count() == 1
+    # admin can change and clear dates; invalid input is refused as a whole
+    admin.post("/payroll/cutoffs", {"year": "2026", "d_8": "2026-09-25"})
+    db.expire_all()
+    assert [(c.month, c.cutoff_date.isoformat()) for c in db.query(PayrollCutoff)] == [(8, "2026-09-25")]
+    admin.post("/payroll/cutoffs", {"year": "2026", "d_8": "2026-09-25", "d_3": "2025-01-01"})   # before the month: refused
+    db.expire_all()
+    assert db.query(PayrollCutoff).count() == 1
+    # the admin settings page points to the calendar and lists the upcoming dates
+    assert "/payroll/cutoffs" in admin.get("/admin/settings").text
+    assert "Must be approved by" in browser("alice").get("/guide").text

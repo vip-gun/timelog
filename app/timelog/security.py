@@ -128,6 +128,8 @@ def current_user(request: Request, db: Session = Depends(get_db)) -> User:
     request.state.user = user
     request.state.is_manager = is_manager(db, user)
     request.state.features = features(db)
+    from .teams import oncall_enabled
+    request.state.oncall_enabled = oncall_enabled(db, user)
     from sqlalchemy import select
 
     from .config import get_settings

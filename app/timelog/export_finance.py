@@ -18,6 +18,8 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 from openpyxl import load_workbook
+from openpyxl.cell.rich_text import CellRichText, TextBlock
+from openpyxl.cell.text import InlineFont
 from openpyxl.formatting.rule import Rule
 from openpyxl.worksheet.datavalidation import DataValidation
 from sqlalchemy.orm import Session
@@ -93,7 +95,8 @@ def _oncall_rules(ws) -> List[Rule]:
 def _fill_oncall_tab(ws, rules, db: Session, year: int, month: int, sheets: List[Sheet], holidays: set,
                      default_rates: Dict[str, Decimal]) -> None:
     protos = {k: _snap(ws, r, 1, 39) for k, r in dict(
-        team=7, emp=8, inc=10, ptitle=60, p62=62, p63=63, p64=64, pteam=67, pemp=68, pinc=70, ptotal=121).items()}
+        team=7, emp=8, inc=10, ptitle=60, p62=62, p63=63, p64=64, p65=65, p66=66, pteam=67, pemp=68, pinc=70,
+        pgap=74, pclose=119).items()}
     h4, h62 = ws.row_dimensions[4].height, ws.row_dimensions[62].height
     ws.delete_rows(6, 400)
     for r in [r for r in ws.row_dimensions if r >= 6]:
@@ -125,21 +128,31 @@ def _fill_oncall_tab(ws, rules, db: Session, year: int, month: int, sheets: List
             if s.snapshot_is_expert:
                 layout.append((row, "inc", s, _full_name(s.user) + " - Incidents/calls"))
                 row += 1
-        row += 1   # blank line between teams
-    last_emp = max([r for r, k, _, _ in layout if k != "team"], default=7)
+        layout.append((row, "gap", None, team))   # blank line between teams (the pricing block shows the team subtotal)
+        row += 1
+    last_emp = max([r for r, k, _, _ in layout if k not in ("team", "gap")], default=7)
     title = last_emp + 3
     shift = title                       # pricing row = employee row + shift (68 = 8 + 60)
 
     def day_index(d: dt.date) -> int:
         return (d - first).days
 
+    team_hdr, team_sum, grand = None, Decimal(0), Decimal(0)
     for r, kind, s, label in layout:
-        _put_row_style(ws, r, protos[kind if kind != "team" else "team"])
-        ws.cell(r, 2).value = label
         pr = r + shift
+        if kind == "gap":
+            # pricing block: the team subtotal closes the team (AM, double rule); the team header row carries it in AI too
+            _put_row_style(ws, pr, protos["pgap"])
+            ws.cell(pr, 39).value = float(team_sum)                     # AM: team subtotal of the payroll check
+            ws.cell(team_hdr + shift, 35).value = float(team_sum)       # AI of the team header row
+            grand += team_sum
+            continue
+        _put_row_style(ws, r, protos[kind])
+        ws.cell(r, 2).value = label
         _put_row_style(ws, pr, protos["p" + kind])
         ws.cell(pr, 2).value = label
         if kind == "team":
+            team_hdr, team_sum = r, Decimal(0)
             continue
         total, total_amount = 0, Decimal(0)
         for d in s.oncall_days:
@@ -155,20 +168,33 @@ def _fill_oncall_tab(ws, rules, db: Session, year: int, month: int, sheets: List
             total_amount += Decimal(d.rate)
         ws.cell(r, 35).value = total                 # AI: number of days
         ws.cell(pr, 35).value = float(total_amount)  # AI: amount
+        ws.cell(pr, 37).value = label                # AK..AL: the "Addition for Payroll's Check" column
+        ws.cell(pr, 38).value = float(total_amount)
+        team_sum += total_amount
 
     # pricing sheet header
     _put_row_style(ws, title, protos["ptitle"])
-    ws.cell(title, 4).value = "PRICING SHEET (Automatic - no input please)"
-    for off, key in ((2, "p62"), (3, "p63"), (4, "p64")):
+    base = dict(rFont="Georgia", sz=12)
+    ws.cell(title, 4).value = CellRichText(
+        TextBlock(InlineFont(**base), "PRICING SHEET ("),
+        TextBlock(InlineFont(color="FFFF0000", **base), "Automatic - no input please"),
+        TextBlock(InlineFont(**base), ")  -  ON CALL PRIME request"))
+    for off, key in ((2, "p62"), (3, "p63"), (4, "p64"), (5, "p65"), (6, "p66")):
         _put_row_style(ws, title + off, protos[key])
     ws.row_dimensions[title + 2].height = h62
     ws.cell(title + 3, 3).value = "Date"
     ws.cell(title + 4, 3).value = "Price"
+    ws.cell(title + 2, 37).value = first                  # AK: month label ("June 26")
+    ws.cell(title + 2, 38).value = "Addition for Payroll's"
+    ws.cell(title + 3, 38).value = "Check"
     for i, d in enumerate(dates):
         c = FIRST_DAY_COL + i
         ws.cell(title + 2, c).value = d.strftime("%a")
         ws.cell(title + 3, c).value = d
         ws.cell(title + 4, c).value = float(default_rates[dtypes[i]])
+    close = max([r for r, k, _, _ in layout if k == "gap"], default=last_emp + 1) + shift + 1
+    _put_row_style(ws, close, protos["pclose"])
+    ws.cell(close, 38).value = float(grand)               # AL: total of the check column
     ws.row_dimensions[4].height = h4
 
     # shading rules over the new blocks

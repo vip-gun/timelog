@@ -1,19 +1,20 @@
 """IT Procurement: payroll reports for Finance and the record that they were sent (closes the payroll period)."""
+import datetime as dt
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Form, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Request
 from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import calc, workflow
-from ..app_settings import payroll_cutoff
+from ..app_settings import cutoff_dates, cutoff_rule, payroll_cutoff
 from ..calendar_utils import month_label, shift_month
 from ..config import get_settings
 from ..db import get_db
 from ..export import build_export
 from ..export_finance import build_oncall_export, build_overtime_export
-from ..models import KIND_ONCALL, KIND_OVERTIME, SUBMITTED, PayrollRun, Sheet, User
+from ..models import KIND_ONCALL, KIND_OVERTIME, SUBMITTED, PayrollCutoff, PayrollRun, Sheet, User, utcnow
 from ..security import flash, payroll_user, verify_csrf
 from ..web import redirect, render
 from .common import check_month
@@ -63,6 +64,72 @@ def page(request: Request, year: Optional[int] = None, month: Optional[int] = No
                    "employees": len({sh.user_id for sh in sheets})},
         "cutoff": cutoff,
     })
+
+
+@router.get("/cutoffs")
+def cutoffs(request: Request, year: Optional[int] = None, me: User = Depends(payroll_user), db: Session = Depends(get_db)):
+    """Cut-off calendar: one date per payroll month, editable by IT Procurement and administrators."""
+    s = get_settings()
+    year = year or dt.date.today().year
+    check_month(year, 1)
+    explicit, rule, closed = cutoff_dates(db), cutoff_rule(db, s), workflow.closed_periods(db)
+    rows = [{"month": m, "label": month_label(year, m), "date": explicit.get((year, m)), "default": calc.default_cutoff_date(year, m, payroll_cutoff(db, s)),
+             "effective": rule(year, m), "closed": (year, m) in closed} for m in range(1, 13)]
+    return render(request, "payroll_cutoffs.html", {"year": year, "rows": rows, "day": payroll_cutoff(db, s)})
+
+
+@router.post("/cutoffs", dependencies=[Depends(verify_csrf)])
+async def save_cutoffs(request: Request, me: User = Depends(payroll_user), db: Session = Depends(get_db)):
+    form = await request.form()
+    try:
+        year = int(form.get("year", ""))
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Not found")
+    check_month(year, 1)
+    url = f"/payroll/cutoffs?year={year}"
+    closed, explicit = workflow.closed_periods(db), cutoff_dates(db)
+    updates, errors = {}, []
+    for m in range(1, 13):
+        raw = str(form.get(f"d_{m}", "")).strip()
+        if (year, m) in closed:
+            continue                      # sent to Finance: the date no longer matters
+        if not raw:
+            updates[m] = None
+            continue
+        try:
+            d = dt.date.fromisoformat(raw)
+        except ValueError:
+            errors.append(f"{month_label(year, m)}: invalid date.")
+            continue
+        first = dt.date(year, m, 1)
+        if d < first or d > first + dt.timedelta(days=150):
+            errors.append(f"{month_label(year, m)}: the cut-off must fall between {first:%d/%m/%Y} and {first + dt.timedelta(days=150):%d/%m/%Y}.")
+            continue
+        updates[m] = d
+    if errors:
+        for e in errors[:6]:
+            flash(request, e, "error")
+        return redirect(url)
+    changes = {}
+    for m, d in updates.items():
+        old = explicit.get((year, m))
+        if d == old:
+            continue
+        row = db.get(PayrollCutoff, (year, m))
+        if d is None:
+            db.delete(row)
+        elif row is None:
+            db.add(PayrollCutoff(year=year, month=m, cutoff_date=d, updated_by_id=me.id))
+        else:
+            row.cutoff_date, row.updated_by_id, row.updated_at = d, me.id, utcnow()
+        changes[f"{year}-{m:02d}"] = {"from": old.isoformat() if old else None, "to": d.isoformat() if d else None}
+    if changes:
+        workflow.audit(db, me, "payroll_cutoffs_update", "settings", None, changes=changes)
+        db.commit()
+        flash(request, f"Cut-off calendar saved ({len(changes)} month(s) changed). Sheets already approved keep their payroll month.", "success")
+    else:
+        flash(request, "No change.", "info")
+    return redirect(url)
 
 
 @router.post("/{year}/{month}/sent", dependencies=[Depends(verify_csrf)])

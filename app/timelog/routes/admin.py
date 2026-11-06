@@ -3,7 +3,7 @@ import io
 import logging
 from pathlib import Path
 from decimal import Decimal, InvalidOperation
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from .. import backup as backups
 from ..access import subordinate_ids
 from ..app_settings import (
-    LDAP_FIELDS, LDAP_PREFIX, oncall_week, SECRET_FIELDS, clear_ldap_settings, effective_settings, get_flag, ldap_overrides,
+    LDAP_FIELDS, LDAP_PREFIX, cutoff_schedule, oncall_week, SECRET_FIELDS, clear_ldap_settings, effective_settings, get_flag, ldap_overrides,
     save_ldap_settings, secret_status, set_setting,
 )
 from ..calendar_utils import parse_hhmm
@@ -22,7 +22,8 @@ from ..config import get_settings
 from ..ldap_auth import diagnose
 from ..db import get_db, get_engine
 from ..ics_import import MAX_BYTES, IcsError, parse_ics
-from ..models import APPROVED, DAY_TYPES, SETTING_ONCALL_HANDOVER, SETTING_ONCALL_WEEK_START, SETTING_PAYROLL_CUTOFF, SETTING_SHOW_AMOUNTS, SETTING_SIGNATURE_REQUIRED, SETTING_TIL_ENABLED, AppSetting, AuditLog, Grade, Holiday, Notification, OnCallDay, OvertimeEntry, OvertimeRule, PayrollRun, SavedSignature, Sheet, Signature, User, utcnow
+from .. import teams as team_utils
+from ..models import APPROVED, DAY_TYPES, SETTING_ONCALL_HANDOVER, SETTING_ONCALL_WEEK_START, SETTING_PAYROLL_CUTOFF, SETTING_SHOW_AMOUNTS, SETTING_SIGNATURE_REQUIRED, SETTING_TIL_ENABLED, AppSetting, AuditLog, Grade, Holiday, Notification, OnCallDay, OvertimeEntry, OvertimeRule, PayrollRun, SavedSignature, Sheet, Signature, Team, User, utcnow
 from ..security import admin_user, check_password_policy, flash, hash_password, verify_csrf
 from ..web import redirect, render
 from ..workflow import audit
@@ -42,24 +43,42 @@ def _dec(value: str, field: str) -> Decimal:
 
 # ------------------------------------------------------------------ users
 @router.get("/users")
-def users(request: Request, q: str = "", archived: int = 0, db: Session = Depends(get_db)):
+def users(request: Request, q: str = "", archived: int = 0, team: str = "", db: Session = Depends(get_db)):
     stmt = select(User).where(User.is_archived.is_(True) if archived else User.is_archived.is_not(True))
+    if team == NO_TEAM:
+        stmt = stmt.where(func.trim(User.team) == "")
+    elif team:
+        stmt = stmt.where(func.lower(User.team) == team.strip().lower())
     if q:
         like = f"%{q.lower()}%"
         stmt = stmt.where(or_(User.username.ilike(like), User.first_name.ilike(like), User.last_name.ilike(like),
                               User.display_name.ilike(like), User.team.ilike(like)))
     rows = sorted(db.scalars(stmt), key=lambda u: u.sort_key)
     n_archived = db.scalar(select(func.count(User.id)).where(User.is_archived.is_(True)))
-    return render(request, "admin/users.html", {"users": rows, "q": q, "archived": bool(archived), "n_archived": n_archived})
+    return render(request, "admin/users.html", {
+        "users": rows, "q": q, "archived": bool(archived), "n_archived": n_archived, "team": team, "no_team": NO_TEAM,
+        "oncall_off": {t.name.strip().lower() for t in db.scalars(select(Team).where(Team.oncall_enabled.is_(False)))},
+        **_bulk_ctx(db)})
+
+
+NO_TEAM = "__none__"
+
+
+def _manager_candidates(db: Session) -> List[User]:
+    return sorted(db.scalars(select(User).where(User.is_active.is_(True), User.is_archived.is_not(True))), key=lambda u: u.full_name.lower())
+
+
+def _bulk_ctx(db: Session) -> dict:
+    return {"managers": _manager_candidates(db), "teams": team_utils.all_team_names(db),
+            "grades": list(db.scalars(select(Grade).order_by(Grade.code)))}
 
 
 def _user_form_ctx(db: Session, user: Optional[User]) -> dict:
-    candidates = sorted(db.scalars(select(User).where(User.is_active.is_(True), User.is_archived.is_not(True))), key=lambda u: u.full_name.lower())
+    candidates = _manager_candidates(db)
     if user is not None and user.id:
         excluded = subordinate_ids(db, user) | {user.id}
         candidates = [c for c in candidates if c.id not in excluded]
-    teams = sorted({x for x in db.scalars(select(User.team).where(User.is_archived.is_not(True))) if x and x.strip()}, key=str.lower)
-    return {"edit_user": user, "managers": candidates, "teams": teams,
+    return {"edit_user": user, "managers": candidates, "teams": team_utils.all_team_names(db),
             "grades": list(db.scalars(select(Grade).order_by(Grade.code)))}
 
 
@@ -82,7 +101,7 @@ def save_user(
     user_id: Optional[int] = Form(None), username: str = Form(""),
     first_name: str = Form(""), last_name: str = Form(""), display_name: str = Form(""),
     email: str = Form(""), employee_id: str = Form(""), team: str = Form(""),
-    manager_id: Optional[str] = Form(None), manager_locked: Optional[str] = Form(None),
+    manager_id: Optional[str] = Form(None), manager_locked: Optional[str] = Form(None), team_locked: Optional[str] = Form(None),
     grade_id: Optional[str] = Form(None), is_expert: Optional[str] = Form(None),
     is_admin: Optional[str] = Form(None), is_procurement: Optional[str] = Form(None), is_active: Optional[str] = Form(None),
     password: str = Form(""),
@@ -108,6 +127,10 @@ def save_user(
         user.grade_id = int(grade_id) if grade_id else None
         user.is_expert = bool(is_expert)
         user.manager_locked = bool(manager_locked)
+        user.team_locked = bool(team_locked)
+        conflict = team_utils.expert_conflict(db, user.team, user.is_expert)
+        if conflict:
+            raise ValueError(conflict)
         if user.id == me.id and (not is_admin or not is_active):
             raise ValueError("You cannot remove your own admin rights or deactivate yourself.")
         user.is_admin, user.is_active = bool(is_admin), bool(is_active) and not user.is_archived
@@ -139,6 +162,193 @@ def save_user(
         return redirect(back)
     flash(request, f"User {user.username} saved.", "success")
     return redirect("/admin/users")
+
+
+@router.post("/users/bulk", dependencies=[Depends(verify_csrf)])
+async def bulk_users(request: Request, me: User = Depends(admin_user), db: Session = Depends(get_db)):
+    """Apply the filled-in fields to every selected user; a blank field means "no change". Users that would end up
+    in an invalid state (hierarchy cycle, Expert in a team without on-call) are skipped and reported."""
+    form = await request.form()
+    back = str(form.get("back", "")) if str(form.get("back", "")).startswith("/admin/users") else "/admin/users"
+    ids = sorted({int(x) for x in form.getlist("user_ids") if str(x).isdigit()})
+    users_ = [u for u in (db.get(User, i) for i in ids) if u is not None]
+    if not users_:
+        flash(request, "Select at least one user.", "error")
+        return redirect(back)
+
+    team = str(form.get("team", "")).strip()
+    clear_team = bool(form.get("clear_team"))
+    manager_raw = str(form.get("manager_id", ""))
+    expert_raw = str(form.get("is_expert", ""))
+    grade_raw = str(form.get("grade_id", ""))
+    lock = bool(form.get("lock"))
+    if not (team or clear_team or manager_raw or expert_raw or grade_raw):
+        flash(request, "Nothing to change: fill in at least one field.", "error")
+        return redirect(back)
+
+    new_manager = None
+    if manager_raw not in ("", "__none__"):
+        new_manager = db.get(User, int(manager_raw)) if manager_raw.isdigit() else None
+        if new_manager is None or not new_manager.is_active or new_manager.is_archived:
+            flash(request, "The chosen line manager is not an active user.", "error")
+            return redirect(back)
+    grade_id = int(grade_raw) if grade_raw.isdigit() else None
+    if grade_raw.isdigit() and db.get(Grade, grade_id) is None:
+        flash(request, "Unknown grade.", "error")
+        return redirect(back)
+
+    changed, skipped = 0, []
+    for u in users_:
+        try:
+            if team or clear_team:
+                u.team = "" if clear_team else team
+                if u.auth_source == "ldap" and lock:
+                    u.team_locked = True
+            if expert_raw in ("1", "0"):
+                u.is_expert = expert_raw == "1"
+            conflict = team_utils.expert_conflict(db, u.team, u.is_expert)
+            if conflict:
+                raise ValueError(conflict)
+            if grade_raw == "__default__":
+                u.grade_id = None
+            elif grade_id is not None:
+                u.grade_id = grade_id
+            if manager_raw == "__none__":
+                u.manager_id = None
+                if lock:
+                    u.manager_locked = True
+            elif new_manager is not None:
+                if new_manager.id == u.id or new_manager.id in subordinate_ids(db, u):
+                    raise ValueError(f"{new_manager.full_name} is below {u.full_name}: that would create a cycle in the hierarchy.")
+                u.manager_id = new_manager.id
+                if lock:
+                    u.manager_locked = True
+            db.flush()
+            changed += 1
+        except ValueError as exc:
+            db.rollback()
+            skipped.append(f"{u.username}: {exc}")
+            # rolled back: re-apply nothing for this user; earlier users of the batch were flushed, so commit them first
+            continue
+        db.commit()
+    audit(db, me, "users_bulk_update", "user", None, count=changed, skipped=len(skipped), team=team or ("" if not clear_team else "(cleared)"),
+          manager=manager_raw, expert=expert_raw, grade=grade_raw, users=[u.username for u in users_])
+    db.commit()
+    if changed:
+        flash(request, f"{changed} user(s) updated.", "success")
+    for msg in skipped[:5]:
+        flash(request, f"Skipped {msg}", "error")
+    if len(skipped) > 5:
+        flash(request, f"…and {len(skipped) - 5} more skipped.", "error")
+    return redirect(back)
+
+
+# ------------------------------------------------------------------ teams
+def _team_overview(db: Session) -> List[dict]:
+    rows = team_utils.team_rows(db)
+    members: dict = {}
+    for u in db.scalars(select(User).where(User.is_archived.is_not(True))):
+        key = u.team.strip().lower()
+        if key:
+            members.setdefault(key, []).append(u)
+    out = []
+    for name in team_utils.all_team_names(db):
+        key = name.lower()
+        users_ = members.get(key, [])
+        row = rows.get(key)
+        # the line manager of most members: who to talk to about the team
+        leads = {}
+        for u in users_:
+            if u.manager is not None:
+                leads[u.manager.full_name] = leads.get(u.manager.full_name, 0) + 1
+        out.append({
+            "name": name, "members": len(users_), "experts": sum(1 for u in users_ if u.is_expert),
+            "oncall": row is None or row.oncall_enabled,
+            "managers": sorted(leads, key=lambda n: -leads[n])[:3],
+        })
+    return out
+
+
+@router.get("/teams")
+def teams_page(request: Request, db: Session = Depends(get_db)):
+    no_team = db.scalar(select(func.count(User.id)).where(User.is_archived.is_not(True), func.trim(User.team) == ""))
+    return render(request, "admin/teams.html", {"teams": _team_overview(db), "no_team": no_team, "no_team_key": NO_TEAM})
+
+
+def _team_row(db: Session, name: str) -> Optional[Team]:
+    return team_utils.team_rows(db).get(name.strip().lower())
+
+
+@router.post("/teams/create", dependencies=[Depends(verify_csrf)])
+def create_team(request: Request, name: str = Form(""), oncall: Optional[str] = Form(None),
+                me: User = Depends(admin_user), db: Session = Depends(get_db)):
+    name = name.strip()
+    if not name:
+        flash(request, "Team name is required.", "error")
+    elif name.lower() in {n.lower() for n in team_utils.all_team_names(db, include_archived=True)}:
+        flash(request, f"The team {name} already exists.", "error")
+    else:
+        db.add(Team(name=name, oncall_enabled=bool(oncall)))
+        audit(db, me, "team_create", "team", None, name=name, oncall=bool(oncall))
+        db.commit()
+        flash(request, f"Team {name} created. Assign members from Users (bulk edit) or the user form.", "success")
+    return redirect("/admin/teams")
+
+
+@router.post("/teams/save", dependencies=[Depends(verify_csrf)])
+def save_team(request: Request, name: str = Form(""), new_name: str = Form(""), oncall: Optional[str] = Form(None),
+              me: User = Depends(admin_user), db: Session = Depends(get_db)):
+    """Rename a team (updates every member) and/or switch on-call on or off for it."""
+    new_name = new_name.strip() or name
+    enabled = bool(oncall)
+    row = _team_row(db, name)
+    members = list(db.scalars(select(User).where(func.lower(User.team) == name.strip().lower())))
+    if not members and row is None:
+        flash(request, "Unknown team.", "error")
+        return redirect("/admin/teams")
+    others = {n.lower() for n in team_utils.all_team_names(db, include_archived=True)} - {name.strip().lower()}
+    if new_name.lower() in others:
+        flash(request, f"A team named {new_name} already exists.", "error")
+        return redirect("/admin/teams")
+    experts = [u for u in members if u.is_expert and not u.is_archived]
+    if not enabled and experts:
+        flash(request, f"On-call cannot be switched off for {name}: {len(experts)} Expert(s) belong to it and Experts only declare "
+                       "on-call. Move them to another team or clear their Expert flag first.", "error")
+        return redirect("/admin/teams")
+    was = row is None or row.oncall_enabled
+    if row is None:
+        row = Team(name=new_name, oncall_enabled=enabled)
+        db.add(row)
+    row.name, row.oncall_enabled = new_name, enabled
+    for u in members:
+        u.team = new_name
+        if u.auth_source == "ldap" and new_name != name:
+            u.team_locked = True   # the directory still says the old name
+    audit(db, me, "team_update", "team", row.id, name=name, new_name=new_name, oncall=enabled, oncall_was=was, members=len(members))
+    db.commit()
+    parts = []
+    if new_name != name:
+        parts.append(f"renamed to {new_name}")
+    if enabled != was:
+        parts.append("on-call switched " + ("on" if enabled else "off") +
+                     ("" if enabled else ": existing on-call sheets stay visible, drafts can no longer be edited or submitted"))
+    flash(request, f"Team {name}: " + ("; ".join(parts) if parts else "no change") + ".", "success" if parts else "info")
+    return redirect("/admin/teams")
+
+
+@router.post("/teams/delete", dependencies=[Depends(verify_csrf)])
+def delete_team(request: Request, name: str = Form(""), me: User = Depends(admin_user), db: Session = Depends(get_db)):
+    count = db.scalar(select(func.count(User.id)).where(func.lower(User.team) == name.strip().lower()))
+    if count:
+        flash(request, f"{name} still has {count} member(s) (archived users included): move them first.", "error")
+        return redirect("/admin/teams")
+    row = _team_row(db, name)
+    if row is not None:
+        db.delete(row)
+        audit(db, me, "team_delete", "team", row.id, name=row.name)
+        db.commit()
+        flash(request, f"Team {name} deleted.", "success")
+    return redirect("/admin/teams")
 
 
 # ------------------------------------------------------------------ grades
@@ -380,6 +590,7 @@ async def save_rules(request: Request, me: User = Depends(admin_user), db: Sessi
 
 # ------------------------------------------------------------------ settings
 def _settings_ctx(db: Session, **extra) -> dict:
+    today = dt.date.today()
     base = get_settings()
     return {
         "show_amounts": get_flag(db, SETTING_SHOW_AMOUNTS),
@@ -387,6 +598,7 @@ def _settings_ctx(db: Session, **extra) -> dict:
         "signature_required": get_flag(db, SETTING_SIGNATURE_REQUIRED),
         "week_start": oncall_week(db, base)[0], "handover": oncall_week(db, base)[1],
         "weekdays": backups.WEEKDAYS,
+        "cutoff_schedule": cutoff_schedule(db, base, today.year, today.month, 6),
         "ldap": effective_settings(db, base),
         "ldap_custom": set(ldap_overrides(db)),
         "secret_status": secret_status(db, base),

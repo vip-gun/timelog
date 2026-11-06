@@ -74,6 +74,8 @@ class User(Base):
     manager_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     # When True, LDAP sync does not overwrite manager_id (admin override).
     manager_locked: Mapped[bool] = mapped_column(Boolean, default=False)
+    # When True, LDAP sync does not overwrite the team (set by hand in Users / Teams).
+    team_locked: Mapped[bool] = mapped_column(Boolean, default=False)
     grade_id: Mapped[Optional[int]] = mapped_column(ForeignKey("grades.id"), nullable=True)
 
     is_expert: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -101,6 +103,17 @@ class User(Base):
     @property
     def sort_key(self):
         return (self.team.lower(), self.last_name.lower(), self.first_name.lower(), self.username)
+
+
+class Team(Base):
+    """Team settings. Membership is the free-text `users.team`; a team without a row has every feature on."""
+
+    __tablename__ = "teams"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    # False: the team does overtime only (no on-call page, sheet or export line for its members)
+    oncall_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
 class Holiday(Base):
@@ -297,6 +310,20 @@ class PayrollRun(Base):
 
     sent_by: Mapped["User"] = relationship()
     items: Mapped[List["PayrollRunItem"]] = relationship(back_populates="run", cascade="all, delete-orphan")
+
+
+class PayrollCutoff(Base):
+    """Finance cut-off date of one payroll month: sheets approved up to this date are paid with that month.
+
+    Months without a row use the fixed pattern (day `payroll_cutoff_day` of the following month)."""
+
+    __tablename__ = "payroll_cutoffs"
+
+    year: Mapped[int] = mapped_column(Integer, primary_key=True)
+    month: Mapped[int] = mapped_column(Integer, primary_key=True)
+    cutoff_date: Mapped[dt.date] = mapped_column(Date)
+    updated_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class PayrollRunItem(Base):

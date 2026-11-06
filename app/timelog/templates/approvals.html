@@ -23,7 +23,7 @@
         <td>{{ s.user.team }}</td>
         <td>{{ "On-call" if s.kind == "oncall" else "Overtime" }}</td>
         <td>{{ month_label(s.year, s.month) }}{% if s.seq > 1 %} <span class="tag tag-late">late claim</span>{% endif %}</td>
-        <td>{{ summary }}{% if conflicts.get(s.id) %} <span class="tag tag-conflict" title="Another employee is also on call on: {% for d in conflicts[s.id] %}{{ d|date }}{{ ", " if not loop.last }}{% endfor %}">⚠ {{ conflicts[s.id]|length }} day(s) in conflict</span>{% endif %}</td>
+        <td>{{ summary }}{% set n_pre = s.overtime_entries|selectattr("preapproved")|list|length if s.kind == "overtime" else 0 %}{% if n_pre %} <span class="tag tag-preapproved" title="The employee ticked requested / pre-approved by their manager on this many entries">{{ n_pre }} pre-approved</span>{% endif %}{% if conflicts.get(s.id) %} <span class="tag tag-conflict" title="Another employee is also on call on: {% for d in conflicts[s.id] %}{{ d|date }}{{ ", " if not loop.last }}{% endfor %}">⚠ {{ conflicts[s.id]|length }} day(s) in conflict</span>{% endif %}</td>
         <td class="small">{{ s.submitted_at|datetime }}</td>
         <td class="r"><a class="btn btn-primary btn-sm" href="{{ url }}">Review &rarr;</a></td>
       </tr>

@@ -100,7 +100,6 @@ h2 { font-size: 1.3rem; margin: 0 0 1rem; }
 .topbar nav a.guide-link:hover, .topbar nav a.guide-link.active { background: #75648A; }
 .topbar nav a.guide-link::after { display: none; }
 .who { display: flex; gap: .9rem; align-items: center; font-size: .9rem; }
-.avatar { width: 34px; height: 34px; border-radius: 2px; display: grid; place-items: center; font-weight: 600; font-size: .85rem; color: var(--secondary); background: var(--primary-vvlight); border: 2px solid var(--primary-vlight); }
 .who .tag { background: rgba(255,255,255,.14); color: #fff; }
 button.link { background: none; border: none; color: rgba(255,255,255,.8); cursor: pointer; font: inherit; padding: .3rem .5rem; border-radius: 2px; transition: background .2s, color .2s; }
 button.link:hover { background: rgba(255,255,255,.12); color: #fff; }
@@ -460,3 +459,4 @@ pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
 .callout-title { display: block; margin-bottom: .25rem; font-family: "JetBrains Mono", monospace; font-size: .72rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--secondary); }
 .callout-warn { background: var(--primary-tint); border-color: var(--primary-vlight); border-left-color: var(--primary); }
 .callout-warn .callout-title { color: var(--primary); }
+.tag-preapproved { background: #FFF4D6; color: #6B5413; border: 1px solid #E8D79A; font-weight: 700; }

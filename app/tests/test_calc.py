@@ -81,3 +81,13 @@ def test_payroll_period_cutoff():
     # never earlier than the work month; year boundary
     assert calc.payroll_period(2026, 10, dt.date(2026, 10, 5), 10) == (2026, 10)
     assert calc.payroll_period(2026, 12, dt.date(2027, 1, 4), 10) == (2026, 12)
+
+
+def test_payroll_period_with_explicit_cutoff_dates():
+    dates = {(2026, 8): dt.date(2026, 9, 22), (2026, 9): dt.date(2026, 10, 2)}
+    rule = lambda y, m: dates.get((y, m)) or calc.default_cutoff_date(y, m, 5)   # noqa: E731
+    assert calc.payroll_period(2026, 8, dt.date(2026, 9, 22), rule) == (2026, 8)       # on the date: still August
+    assert calc.payroll_period(2026, 8, dt.date(2026, 9, 23), rule) == (2026, 9)       # the day after: September
+    assert calc.payroll_period(2026, 8, dt.date(2026, 10, 3), rule) == (2026, 10)      # September cut-off passed too
+    assert calc.payroll_period(2026, 8, dt.date(2026, 9, 23), rule, closed={(2026, 9)}) == (2026, 10)
+    assert calc.default_cutoff_date(2026, 12, 5) == dt.date(2027, 1, 5)

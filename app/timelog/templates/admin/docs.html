@@ -47,7 +47,8 @@
       <tr><th scope="row">Administrator</th><td>Manages users, grades, holidays, settings and sees the audit log. Can approve any sheet and reopen an approved sheet (audited).</td></tr>
     </tbody>
   </table>
-  <p>Colleagues never see each other's declarations. Opening a record you are not allowed to see answers <em>404</em>, so its existence is not disclosed. The line manager comes from the directory (AD <code>manager</code> attribute) at each login, unless you lock it in <a href="/admin/users">Users</a>.</p>
+  <p>Colleagues never see each other's declarations. Opening a record you are not allowed to see answers <em>404</em>, so its existence is not disclosed. The line manager and the team come from the directory (AD <code>manager</code> and <code>department</code> attributes) at each login, unless you lock them in <a href="/admin/users">Users</a>.</p>
+  <p><strong>Bulk edit</strong>: in <a href="/admin/users">Users</a>, tick several people (or filter by team and tick all) and set their team, line manager, Expert flag or grade in one operation; blank fields change nothing. For LDAP users the manager and team you set are locked against the directory by default (untick <em>Lock</em> to let the next login overwrite them). A user who would end up in a hierarchy cycle, or as an Expert in an overtime-only team, is skipped and reported. The operation is audited (<code>users_bulk_update</code>). <a href="/admin/teams">Teams</a> manages the teams themselves: create, rename (moves every member), delete when empty, switch on-call.</p>
 </section>
 
 <section class="card docs" id="oncall">
@@ -57,6 +58,7 @@
     <li>Each day has exactly one type: <strong>legal holiday</strong> wins over Saturday / Sunday, which win over weekday. The daily stipend comes from the employee's <a href="/admin/grades">grade</a> (rates per weekday, Saturday, Sunday and holiday).</li>
     <li><strong>Experts</strong> record interventions on the grid (incident number, comment): the daily rate is doubled. <strong>Normal employees</strong> record interventions as overtime; entries on a booked on-call day are recognised automatically.</li>
     <li><strong>Conflicts</strong>: two employees cannot be on call at the same time. Managers and administrators see a red banner and highlighted days on an on-call sheet, and a tag on the Approvals list, when another employee has the same day on a submitted or approved sheet. Employees outside the manager's team are not named. Drafts are not counted, and approval is not blocked: the manager decides.</li>
+    <li><strong>Teams without on-call</strong>: in Admin › <a href="/admin/teams">Teams</a> on-call can be switched off per team (overtime-only teams). Their members have no On-call page, nav item or on-call line in the Finance export, and their User Guide hides the on-call parts. Existing sheets stay visible; a draft on-call sheet of such a user cannot be edited or submitted. Experts only declare on-call, so a team that has Experts cannot be switched off and an Expert cannot be moved into one. A team without a row, and users without a team, always have on-call.</li>
     <li>Rates and day types are <em>snapshotted at submission</em>: later rate changes never alter a submitted or approved sheet.</li>
   </ul>
 </section>
@@ -115,7 +117,7 @@
   <p class="help">Example: 2 h on a weekday evening, of which 1 h at night, paid: HL100 = 2, HL101 = 2, HL111 = 1. The same 2 h taken as time in lieu credit 1 &times; 1.5 + 1 &times; 1.8 = 3.3 h. The factors can be changed under <a href="/admin/rules">TIL factors</a>; the payroll premiums above are fixed by the payroll codes.</p>
 
   <h3>Payroll period</h3>
-  <p>Sheets approved up to day {{ payroll_cutoff }} of the following month (the Finance cut-off, set in <a href="/admin/settings">Settings</a>) are paid with their work month; later approvals are paid with the following month. See <a href="#payrun">Payroll run &amp; cut-off</a>.</p>
+  <p>Sheets approved up to the Finance cut-off date of their work month are paid with that month; later approvals are paid with the following month. The cut-off is one explicit date per month, kept in the <a href="/payroll/cutoffs">cut-off calendar</a> (IT Procurement or administrator); a month without a date uses the default pattern, day {{ payroll_cutoff }} of the following month (<a href="/admin/settings">Settings</a>). See <a href="#payrun">Payroll run &amp; cut-off</a>.</p>
 </section>
 
 <section class="card docs" id="workflow">
@@ -128,7 +130,7 @@ approved ──reopen (admin, audited)──▶ draft</code></pre>
     <li><strong>One submission per month</strong> covers the on-call and overtime drafts. If any sheet is refused (for instance unjustified weekend overtime) nothing is submitted.</li>
     <li>The <strong>direct line manager</strong>, any manager <strong>above</strong> them in the hierarchy (skip-level approval) or an administrator approves; nobody approves their own sheet, and peers cannot approve each other. The audit log notes when an approval was made skip-level. Every transition is written to the <a href="/admin/audit">audit log</a>.</li>
     <li><strong>Signature</strong> (Settings): employees draw, or upload a picture of, their signature and confirm a statement. It is stored with a SHA-256 fingerprint of the sheet; managers see a check that the content is unchanged since signing. This is a simple electronic signature, not a qualified one.</li>
-    <li><strong>Payroll period</strong>: sheets approved up to day {{ payroll_cutoff }} of the following month are paid with their work month; later approvals go to the next open payroll period and are shown as <em>late claims</em> (<code>PAYROLL_CUTOFF_DAY</code>).</li>
+    <li><strong>Payroll period</strong>: sheets approved up to the cut-off date of their work month (calendar, else day {{ payroll_cutoff }} of the following month) are paid with it; later approvals go to the next open payroll period and are shown as <em>late claims</em> (<code>PAYROLL_CUTOFF_DAY</code>).</li>
   </ul>
 </section>
 
@@ -144,7 +146,7 @@ approved ──reopen (admin, audited)──▶ draft</code></pre>
 
 <section class="card docs" id="payrun">
   <h2>Payroll run &amp; cut-off</h2>
-  <p>Finance accepts the monthly reports until a <strong>cut-off</strong>: day {{ payroll_cutoff }} of the following month (Admin › Settings). The process is controlled in the application:</p>
+  <p>Finance accepts the monthly reports until a <strong>cut-off</strong>: a date set per month in the <a href="/payroll/cutoffs">cut-off calendar</a> (default pattern: day {{ payroll_cutoff }} of the following month, Admin › Settings). The process is controlled in the application:</p>
   <ol>
     <li><strong>Employees and managers</strong> submit and approve as usual. Everything approved up to the cut-off is paid with its work month.</li>
     <li><strong>IT Procurement</strong> opens <em>Payroll</em>, chooses the period, and downloads the <em>on-call</em> and <em>overtime</em> reports (whole organisation: the work month plus, one tab per earlier month, everything that was validated late). The page lists what is included, with approval dates, and what is still waiting for approval.</li>

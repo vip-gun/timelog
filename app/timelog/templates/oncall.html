@@ -28,6 +28,10 @@
 </section>
 {% endif %}
 
+{% if oncall_off %}
+<div class="banner banner-info">On-call is switched off for the team <strong>{{ target.team }}</strong>. This sheet is kept for reference and can no longer be edited or submitted.</div>
+{% endif %}
+
 {% if conflicts %}
 <div class="banner banner-error">
   <strong>On-call conflict:</strong> two employees cannot be on call at the same time. {{ target.full_name }} is booked on days where someone else is also on call:

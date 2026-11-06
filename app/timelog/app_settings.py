@@ -6,16 +6,18 @@ Secrets are encrypted with a key derived from SECRET_KEY and are never sent back
 """
 import base64
 import dataclasses
+import datetime as dt
 import hashlib
-from typing import Dict, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
 from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from . import calc
 from .config import Settings
 from .models import (
-    SETTING_DEFAULTS, SETTING_ONCALL_HANDOVER, SETTING_ONCALL_WEEK_START, SETTING_PAYROLL_CUTOFF, SETTING_SHOW_AMOUNTS, SETTING_SIGNATURE_REQUIRED, SETTING_TIL_ENABLED, AppSetting, User,
+    SETTING_DEFAULTS, SETTING_ONCALL_HANDOVER, SETTING_ONCALL_WEEK_START, SETTING_PAYROLL_CUTOFF, SETTING_SHOW_AMOUNTS, SETTING_SIGNATURE_REQUIRED, SETTING_TIL_ENABLED, AppSetting, PayrollCutoff, User,
 )
 
 LDAP_PREFIX = "ldap."
@@ -84,6 +86,27 @@ def payroll_cutoff(db: Session, base: Settings) -> int:
     """Finance cut-off day of the following month: Admin > Settings, else the PAYROLL_CUTOFF_DAY env value."""
     raw = get_setting(db, SETTING_PAYROLL_CUTOFF)
     return int(raw) if raw.isdigit() and 1 <= int(raw) <= 28 else base.payroll_cutoff_day
+
+
+def cutoff_dates(db: Session) -> Dict[Tuple[int, int], dt.date]:
+    """Explicit cut-off dates set per payroll month (Payroll > Cut-off calendar)."""
+    return {(c.year, c.month): c.cutoff_date for c in db.scalars(select(PayrollCutoff))}
+
+
+def cutoff_rule(db: Session, base: Settings) -> Callable[[int, int], dt.date]:
+    """(year, month) -> last approval date paid with that payroll month: the explicit date, else the fixed pattern."""
+    explicit, day = cutoff_dates(db), payroll_cutoff(db, base)
+    return lambda y, m: explicit.get((y, m)) or calc.default_cutoff_date(y, m, day)
+
+
+def cutoff_schedule(db: Session, base: Settings, year: int, month: int, count: int = 6) -> List[Tuple[int, int, dt.date, bool]]:
+    """[(year, month, cut-off date, explicitly set)] for `count` payroll months from (year, month)."""
+    explicit, rule = cutoff_dates(db), cutoff_rule(db, base)
+    out = []
+    for i in range(count):
+        y, m = year + (month - 1 + i) // 12, (month - 1 + i) % 12 + 1
+        out.append((y, m, rule(y, m), (y, m) in explicit))
+    return out
 
 
 def can_see_amounts(db: Session, viewer: User, target: User) -> bool:

@@ -56,6 +56,18 @@ A weekend day that is also a holiday counts in HL121 only (never HL130).
   **refused** for yourself, the last active admin, a user with **approved sheets** or who recorded a payroll run (archive instead).
   Both are audited (`user_archive`, `user_unarchive`, `user_delete`). Archiving a manager leaves their reports pointing at them: the
   admin reassigns them (the flash says how many).
+- **Teams** (Admin › Teams, `routes/admin.py`, `teams.py`, table `teams`, `templates/admin/teams.html`): membership stays the free-text
+  `users.team` (LDAP `department`); the `teams` table only holds per-team switches. **`teams.oncall_enabled` (default on)**: a team with
+  it off does **overtime only**. A team without a row, and a user without a team, always have on-call (`teams.oncall_enabled`). Effects:
+  no On-call nav item/dashboard tiles/column, `/oncall` redirects to the dashboard (with a notice) unless that month already has an
+  on-call sheet (then read-only with a banner), `POST /oncall/...` is refused, `workflow.month_submittable` skips on-call drafts. Existing
+  sheets stay visible and exported. **Experts only declare on-call**, so a team with Experts cannot be switched off and an Expert cannot be
+  put in such a team (`teams.expert_conflict`, enforced in the user form and the bulk edit). Teams page: create, rename (moves every member;
+  LDAP members get `team_locked`), delete when it has no member at all, on-call switch. Audited (`team_create|update|delete`).
+- **Bulk user edit** (Admin › Users, `POST /admin/users/bulk`): tick users (select-all in `app.js`), fill only the fields to change: team (or
+  clear), line manager (or none), Expert yes/no, grade. Users that would break a rule (hierarchy cycle, Expert in an overtime-only team) are
+  skipped and listed; the rest are applied (one commit per user). "Lock" (default on) sets `manager_locked` / `team_locked` for LDAP users so
+  the next login does not overwrite the change (`users.team_locked`, honoured by `ldap_auth._upsert`). Audited (`users_bulk_update`).
 - **Grades**: on-call daily rates are configurable **per grade** (`grades` table). Each user has a grade (falls back to the
   default grade).
 - **On-call amount per day** = `rate[grade][day_type] × (2 if expert and intervention else 1)`.
@@ -138,19 +150,23 @@ approved ──reopen (admin only, audited, latest sheet of the month only)─�
   overtime) nothing is submitted. The submit panel is on both pages; the on-call page's "Save & submit" first saves the grid.
   Withdraw / reject / approve stay per sheet.
 - **Navigation** (`base.html`): Dashboard, On-call, Overtime, Approvals, Statistics (managers/admin; `/team`, `access.can_view_team`),
-  Payroll (procurement/admin), **User Guide** (everyone, last item of the nav, just before Admin; styled as a lighter purple tab with a border, `.guide-link`), then **Admin on the right, just before the user block**.
+  Payroll (procurement/admin), **User Guide** (everyone, adapts to role and team: no on-call parts for overtime-only teams, a "For managers" section for managers/admins; last item of the nav, just before Admin; styled as a lighter purple tab with a border, `.guide-link`), then **Admin on the right, just before the user block**.
 - **Month sync**: the month last viewed on the on-call or overtime page is kept in the session (`remember_month`); the nav links
   `/oncall` and `/overtime` open that month (else the current one). A "Current month" button returns to today's month.
 - **Approver = the direct line manager, any manager above them in the chain (skip-level approval, `access.is_above`), or an admin.**
   Nobody approves their own sheet; peers and people outside the chain cannot. The Approvals list and the dashboard counter of a
   manager cover everyone below them (`subordinate_ids`); the audit entry carries `skip_level: true` when the approver is not the
   direct manager. Submission e-mails still go to the direct manager.
-- **Payroll period** (`sheets.payroll_year/month`) is fixed at approval by `calc.payroll_period`: approvals up to the **Finance
-  cut-off** (day of month M+1; default **5**, `PAYROLL_CUTOFF_DAY` env, editable in Admin › Settings as `payroll_cutoff_day`,
-  `app_settings.payroll_cutoff`) are paid with work month M; later approvals go to the payroll month that is still open (approval
-  month, or the previous one if approved before its cut-off). **A period already sent to Finance is closed** (`closed_periods`):
-  the sheet moves on to the next period even if the calendar cut-off has not passed. A sheet paid in a later period than its work
-  month is a **late claim** (`Sheet.is_late`).
+- **Payroll period** (`sheets.payroll_year/month`) is fixed at approval by `calc.payroll_period`: the **first open payroll month, not
+  before the work month, whose cut-off date has not passed** (approved on or before the date = paid with that month). **The Finance
+  cut-off is one explicit date per payroll month** (table `payroll_cutoffs`, `PayrollCutoff`), edited by **IT Procurement or admin** on
+  `/payroll/cutoffs` (cut-off calendar, one year at a time, linked from Payroll and Admin › Settings; date between the 1st of the month
+  and 150 days later; blank = delete; months already sent to Finance are locked; audited `payroll_cutoffs_update`). A month **without a
+  date uses the default pattern**: day `payroll_cutoff_day` of the following month (default **5**, `PAYROLL_CUTOFF_DAY` env, editable in
+  Admin › Settings as `payroll_cutoff_day`). Resolved by `app_settings.cutoff_rule` / `cutoff_schedule`. Changing a date affects only
+  sheets approved afterwards. **A period already sent to Finance is closed** (`closed_periods`): the sheet moves on to the next period
+  even if its cut-off has not passed. A sheet paid in a later period than its work month is a **late claim** (`Sheet.is_late`). The User
+  Guide lists the upcoming dates.
 - **IT Procurement role and payroll runs** (`users.is_procurement`, set in Admin › Users or by `LDAP_GROUP_PROCUREMENT`;
   `routes/payroll.py`, `templates/payroll.html`, nav "Payroll", dependency `payroll_user` = procurement or admin). Procurement
   exports the **whole organisation** (`export.scope_users`, `access.can_export`) but cannot open individual sheets (404). On
@@ -181,6 +197,10 @@ approved ──reopen (admin only, audited, latest sheet of the month only)─�
     below (pricing row = employee row + title row), hidden `Support` tab (holidays, default-grade prices). *Overtime*: `READ FIRST` +
     one row per employee **and compensation** (Paid / TIL), hours per day (holiday days headed `LH`), AI–AM totals by day type,
     AN–AQ night hours per day type, AR/AX TIL credit, AS–AW payroll codes (AU = night hours).
+  - On-call export pricing block, as in the reference sheet: banner "PRICING SHEET (Automatic - no input please)  -  ON CALL PRIME request"
+    (the parenthesis in red, centred across D:AH), the work month in AK (e.g. "June 26"), and the **"Addition for Payroll's Check"** box in
+    AK:AM: employee name (AK) and amount (AL = AI of the row), a **team subtotal in AM** on the blank row closing each team (double rule),
+    the team total also in AI of the pricing team header row, and the grand total in AL of the closing row. Values, not formulas.
   - `/payroll/export/control` → the detailed control workbook (`export.py`): Summary (status of every team member, counts late claims
     awaiting validation), On-Call, On-Call Grid, Overtime Payroll, detail tabs.
 - Every transition is written to `audit_log`.
@@ -312,7 +332,7 @@ Without them the footer says "dev build, started <server start time>" (`version.
 ### 6.4b User Guide (employees)
 `/guide` (`routes/guide.py`, `templates/guide.html`, nav "User Guide" for every signed-in user, last nav item before Admin). A task-oriented guide
 for employees: the short version, on-call, overtime, interventions, submitting, statuses, cut-off/late claims, FAQ. It adapts to
-the viewer (Experts get no overtime how-to, the signature step only appears when `signature_required` is on, TIL text follows
+the viewer (Experts get no overtime how-to, teams without on-call get no on-call how-to, the signature step only appears when `signature_required` is on, TIL text follows
 `features.til`) and reads live values (rotation start/handover, time step, night window, look-back, payroll cut-off). It never prints
 rates or amounts (they can be hidden from employees). Two screenshots in `static/guide/` (demo data). Keep it in step with §2/§3 and
 Admin › Documentation (which is the administrator's reference). At ≤ 1240 px the header hides the user name so the admin nav still fits.
@@ -440,10 +460,10 @@ The JS (`static/app.js`) has no automated tests; static assets are excluded from
 
 ## 9. Current state
 
-- Version **1.9.0**. 112 pytest tests pass on SQLite; the backup and restore tests also pass on PostgreSQL 16. SonarQube (0 issues,
+- Version **1.10.0** (teams panel with per-team on-call, bulk user edit, per-month Finance cut-off calendar, payroll-check block in the on-call export). 123 pytest tests pass on SQLite; the backup and restore tests also pass on PostgreSQL 16. SonarQube (0 issues,
   0 hotspots, gate passed) and Dependency-Track (0 findings) re-run clean on this version.
-- Latest offline package: `dist/timelog-1.9.0-offline-rhel9-amd64.zip` (+ `.sha256`, 21 bundled Docker RPMs), built from the 1.9.0 sources after
-  tests, SonarQube and Dependency-Track were clean. Older packages in `dist/` (1.3.1, 1.4.0, 1.7.0) are obsolete.
+- Latest offline package: `dist/timelog-1.10.0-offline-rhel9-amd64.zip` (+ `.sha256`, bundled Docker RPMs), built from the 1.10.0 sources after
+  tests, SonarQube and Dependency-Track were clean. Older packages in `dist/` (1.3.1, 1.4.0, 1.7.0, 1.9.0) are obsolete.
 - The local Docker instance holds no demo users: only `admin` and `tuser` (admin). Demo data for screenshots lives in a throwaway
   SQLite database, never in the local stack.
 - **Verified**: image build; the full stack (nginx HTTPS + app + PostgreSQL 16, all healthy); HTTP→HTTPS redirect; every page for
