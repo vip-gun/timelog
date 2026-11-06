@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Prepare Directory Users{% endblock %}
+{% block content %}
+{% include "admin/_nav.html" %}
+<div class="row-between">
+  <h1>Prepare directory (LDAP) users</h1>
+  <div class="actions"><a class="btn btn-ghost" href="/admin/users">Back to users</a></div>
+</div>
+<p class="help">Without this page an LDAP account is created at the person's <strong>first sign-in</strong>. Here you create the accounts <strong>in advance</strong>, so their team, line manager, Expert flag and grade are ready before they first sign in
+  (and so managers appear in the hierarchy). The people still sign in with their directory password; names, e-mail and employee ID are completed from the directory at that moment.
+  {% if not ldap_enabled %}<strong>LDAP sign-in is currently switched off</strong> in <a href="/admin/settings">Settings</a>: accounts can be prepared, but nobody can sign in with them until it is enabled.{% endif %}</p>
+<form method="post" action="/admin/users/ldap" class="card form-grid">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <label class="span-all">Directory usernames <span class="muted small">(sAMAccountName; one per line, or separated by commas or spaces; up to 200)</span>
+    <textarea name="usernames" rows="6" required spellcheck="false" autocomplete="off" placeholder="jdoe&#10;asmith"></textarea></label>
+  <label class="check span-all"><input type="checkbox" name="lookup" value="1" {% if ldap_enabled %}checked{% endif %}> Look the users up in the directory now (fills names, e-mail, employee ID, team and manager; usernames that are not found are not created)</label>
+  <h2 class="span-all">Apply to all of them <span class="muted small">(blank = take it from the directory at sign-in)</span></h2>
+  <label>Team <input name="team" list="ldap-team-list" autocomplete="off" placeholder="from the directory"></label>
+  <datalist id="ldap-team-list">{% for t in teams %}<option value="{{ t }}">{% endfor %}</datalist>
+  <label>Line manager
+    <select name="manager_id"><option value="">— from the directory —</option>
+      {% for m in managers %}<option value="{{ m.id }}">{{ m.full_name }} ({{ m.username }})</option>{% endfor %}</select></label>
+  <label>Expert
+    <select name="is_expert"><option value="">— no change —</option><option value="1">Expert</option><option value="0">Not an Expert</option></select></label>
+  <label>Grade
+    <select name="grade_id"><option value="">default grade</option>
+      {% for g in grades %}<option value="{{ g.id }}">{{ g.code }} – {{ g.name }}</option>{% endfor %}</select></label>
+  <p class="help span-all">A team or line manager chosen here is <strong>locked</strong> against the directory (unlock it in the user's profile). Anything left blank is refreshed from the directory at every sign-in, as usual.
+    If an LDAP group is configured for Expert, Administrator or IT Procurement (Settings), the group membership overrides those flags at sign-in. Use <a href="/admin/users">Bulk edit</a> afterwards to change several prepared users at once.</p>
+  <div class="actions span-all"><button class="btn btn-primary">Prepare accounts</button></div>
+</form>
+{% endblock %}

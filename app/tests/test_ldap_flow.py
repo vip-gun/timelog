@@ -105,3 +105,60 @@ def test_ldap_login_creates_user_and_unavailable_directory(browser, db, monkeypa
         raise LdapUnavailable("directory down")
     monkeypatch.setattr("timelog.routes.auth.authenticate", down)
     assert browser().login("bob", "x").status_code == 503
+
+
+def _admin_browser(browser):
+    b = browser()
+    assert b.login("admin").status_code == 303
+    return b
+
+
+def test_lookup_users(ldap):
+    got = ldap_auth.lookup_users(ldap, ["alice", "nobody", "dup"])
+    assert got["alice"][0].first_name == "Alice" and got["alice"][0].manager.username == "boss" and got["alice"][1] == ""
+    assert got["nobody"][0] is None and "not found" in got["nobody"][1]
+    assert got["dup"][0] is None and "2 directory entries" in got["dup"][1]
+    ldap.ldap_group_required = "CN=Others"
+    assert "required LDAP group" in ldap_auth.lookup_users(ldap, ["alice"])["alice"][1]
+
+
+def test_prepare_ldap_users_before_first_login(browser, db, users, ldap, monkeypatch):
+    from timelog.models import AuditLog
+    monkeypatch.setattr("timelog.routes.admin.effective_settings", lambda db_, base: ldap)
+    admin = _admin_browser(browser)
+    db.delete(users["alice"])                    # the fixture's local "alice" would be skipped as already existing
+    db.commit()
+    assert admin.get("/admin/users/ldap").status_code == 200
+    r = admin.post("/admin/users/ldap", {"usernames": "alice\nnobody, manager", "lookup": "1", "team": "Data",
+                                           "manager_id": str(users["dave"].id), "is_expert": "1"})
+    assert r.status_code == 303
+    db.expire_all()
+    alice = db.query(User).filter_by(username="alice").one()
+    assert (alice.auth_source, alice.first_name, alice.email, alice.last_login_at) == ("ldap", "Alice", "alice@example.test", None)
+    assert (alice.team, alice.team_locked, alice.manager_id, alice.manager_locked, alice.is_expert) == ("Data", True, users["dave"].id, True, True)
+    assert db.query(User).filter_by(username="nobody").count() == 0            # not in the directory
+    assert db.query(User).filter_by(username="manager").one().auth_source == "local"   # existing user untouched
+    assert db.query(User).filter_by(username="boss").count() == 0              # explicit manager: the directory one is not pulled in
+    assert db.query(AuditLog).filter_by(action="user_preprovision").count() == 1
+    assert "Not signed in yet" in admin.get("/admin/users").text
+
+    # first sign-in: same record, completed from the directory, prepared team and manager kept
+    p = authenticate(ldap, "alice", "good")
+    again = ldap_auth.sync_user(db, p)
+    db.commit()
+    assert again.id == alice.id and again.ldap_dn == ALICE_DN and again.last_login_at is not None
+    assert (again.team, again.manager_id) == ("Data", users["dave"].id)
+
+
+def test_prepare_ldap_users_without_lookup_and_validation(browser, db, users):
+    admin = _admin_browser(browser)
+    admin.post("/admin/users/ldap", {"usernames": "newbie"})
+    db.expire_all()
+    u = db.query(User).filter_by(username="newbie").one()
+    assert (u.auth_source, u.first_name, u.password_hash) == ("ldap", "", None)
+    admin.post("/admin/users/ldap", {"usernames": "bad name!"})                  # invalid characters: nothing created
+    db.expire_all()
+    assert db.query(User).filter_by(username="bad").count() == 0
+    assert browser("manager").post("/admin/users/ldap", {"usernames": "x"}).status_code in (302, 303, 403, 404)
+    db.expire_all()
+    assert db.query(User).filter_by(username="x").count() == 0

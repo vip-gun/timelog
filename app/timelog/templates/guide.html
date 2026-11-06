@@ -181,7 +181,7 @@
   <p>Some teams do not declare on-call duty. Their members have no On-call page and you will only see overtime sheets for them. Which teams those are is set by an administrator under Admin › Teams{% if user.is_admin %} (<a href="/admin/teams">open</a>){% endif %}.</p>
   {% if user.is_admin %}
   <h3>Administrators</h3>
-  <p>Admin › <a href="/admin/teams">Teams</a> creates and renames teams and switches on-call on or off per team. Admin › <a href="/admin/users">Users</a> lets you tick several people and set their team, line manager, Expert flag or grade in one go (<em>Bulk edit</em>). The Administrator's reference is under Admin › <a href="/admin/docs">Documentation</a>.</p>
+  <p>Admin › <a href="/admin/users/ldap">Users › Prepare LDAP users</a> creates directory accounts before people first sign in, so you can set their team, manager and roles ahead of time. Admin › <a href="/admin/teams">Teams</a> creates and renames teams and switches on-call on or off per team. Admin › <a href="/admin/users">Users</a> lets you tick several people and set their team, line manager, Expert flag or grade in one go (<em>Bulk edit</em>). The Administrator's reference is under Admin › <a href="/admin/docs">Documentation</a>.</p>
   {% endif %}
 </section>
 {% endif %}

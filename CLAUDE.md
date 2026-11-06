@@ -64,6 +64,14 @@ A weekend day that is also a holiday counts in HL121 only (never HL130).
   sheets stay visible and exported. **Experts only declare on-call**, so a team with Experts cannot be switched off and an Expert cannot be
   put in such a team (`teams.expert_conflict`, enforced in the user form and the bulk edit). Teams page: create, rename (moves every member;
   LDAP members get `team_locked`), delete when it has no member at all, on-call switch. Audited (`team_create|update|delete`).
+- **Preparing LDAP users in advance** (Admin › Users › Prepare LDAP users, `GET|POST /admin/users/ldap`, admin only): create
+  `auth_source=ldap` accounts before the first sign-in from a list of usernames (up to 200). Optional directory lookup
+  (`ldap_auth.lookup_users`, service account only: names, e-mail, employee ID, team, manager, group flags; usernames not found are not
+  created; a user outside `LDAP_GROUP_REQUIRED` is created with a warning) via `sync_user(login=False)`; optional team / manager /
+  Expert / grade applied to all. A team or manager set here gets `team_locked` / `manager_locked`, otherwise the directory values apply.
+  At first login the existing record is matched by `ldap_dn` or username (`_upsert`) and completed as usual; LDAP group flags still
+  override Admin/Expert/Procurement. Existing usernames (local or LDAP) are skipped. The users list tags them "Not signed in yet".
+  Audited (`user_preprovision`).
 - **Bulk user edit** (Admin › Users, `POST /admin/users/bulk`): tick users (select-all in `app.js`), fill only the fields to change: team (or
   clear), line manager (or none), Expert yes/no, grade. Users that would break a rule (hierarchy cycle, Expert in an overtime-only team) are
   skipped and listed; the rest are applied (one commit per user). "Lock" (default on) sets `manager_locked` / `team_locked` for LDAP users so
@@ -460,10 +468,10 @@ The JS (`static/app.js`) has no automated tests; static assets are excluded from
 
 ## 9. Current state
 
-- Version **1.10.0** (teams panel with per-team on-call, bulk user edit, per-month Finance cut-off calendar, payroll-check block in the on-call export). 123 pytest tests pass on SQLite; the backup and restore tests also pass on PostgreSQL 16. SonarQube (0 issues,
+- Version **1.11.0** (prepare LDAP users in advance; on top of 1.10.0: teams panel, bulk user edit, cut-off calendar, payroll-check block). 126 pytest tests pass on SQLite; the backup and restore tests also pass on PostgreSQL 16. SonarQube (0 issues,
   0 hotspots, gate passed) and Dependency-Track (0 findings) re-run clean on this version.
-- Latest offline package: `dist/timelog-1.10.0-offline-rhel9-amd64.zip` (+ `.sha256`, bundled Docker RPMs), built from the 1.10.0 sources after
-  tests, SonarQube and Dependency-Track were clean. Older packages in `dist/` (1.3.1, 1.4.0, 1.7.0, 1.9.0) are obsolete.
+- Latest offline package: `dist/timelog-1.11.0-offline-rhel9-amd64.zip` (+ `.sha256`, bundled Docker RPMs), built from the 1.11.0 sources after
+  tests, SonarQube and Dependency-Track were clean. Older packages in `dist/` (1.3.1, 1.4.0, 1.7.0, 1.9.0, 1.10.0) are obsolete.
 - The local Docker instance holds no demo users: only `admin` and `tuser` (admin). Demo data for screenshots lives in a throwaway
   SQLite database, never in the local stack.
 - **Verified**: image build; the full stack (nginx HTTPS + app + PostgreSQL 16, all healthy); HTTP→HTTPS redirect; every page for

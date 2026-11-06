@@ -2,7 +2,7 @@
 import logging
 import ssl
 from dataclasses import dataclass
-from typing import Optional
+from typing import Dict, List, Optional, Tuple
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -187,6 +187,35 @@ def diagnose(s: Settings, username: str = "") -> Diagnosis:
         svc.unbind()
 
 
+def lookup_users(s: Settings, usernames: List[str]) -> Dict[str, Tuple[Optional[LdapProfile], str]]:
+    """Look users up in the directory without their password (service account only), to prepare accounts in advance.
+
+    {username: (profile, "")} when found, {username: (None, reason)} otherwise. A user outside the required group is
+    returned with a warning text, since they could not sign in until added to it. Raises LdapUnavailable."""
+    if not s.ldap_url:
+        raise LdapUnavailable("LDAP URL is not configured.")
+    svc = _connect(s, _server(s), s.ldap_bind_dn, s.ldap_bind_password)
+    if svc is None:
+        raise LdapUnavailable("Service account bind failed - check the bind DN and password.")
+    out: Dict[str, Tuple[Optional[LdapProfile], str]] = {}
+    try:
+        for username in usernames:
+            entries = _find_user(s, svc, username)
+            if len(entries) != 1:
+                out[username] = (None, "not found in the directory" if not entries else f"{len(entries)} directory entries match")
+                continue
+            profile = _profile_from_entry(s, entries[0])
+            profile.username = profile.username or username.lower()
+            warning = ""
+            if s.ldap_group_required and not _is_member(s, svc, profile.dn, s.ldap_group_required):
+                warning = "not in the required LDAP group: cannot sign in until added to it"
+            _enrich(s, svc, entries[0], profile)
+            out[username] = (profile, warning)
+    finally:
+        svc.unbind()
+    return out
+
+
 def authenticate(s: Settings, username: str, password: str) -> Optional[LdapProfile]:
     """Verify credentials against the directory. Returns None on bad credentials / not allowed."""
     # An empty password would perform an "unauthenticated bind" that succeeds on AD.
@@ -235,8 +264,9 @@ def _upsert(db: Session, p: LdapProfile) -> User:
     return user
 
 
-def sync_user(db: Session, p: LdapProfile) -> User:
-    """Create/update the local record of an LDAP user (and their manager) after a successful login."""
+def sync_user(db: Session, p: LdapProfile, login: bool = True) -> User:
+    """Create/update the local record of an LDAP user (and their manager): after a successful login, or (login=False)
+    when an administrator prepares the account in advance."""
     user = _upsert(db, p)
     if p.is_admin is not None:
         user.is_admin = p.is_admin
@@ -249,6 +279,7 @@ def sync_user(db: Session, p: LdapProfile) -> User:
         db.flush()
         if manager.id != user.id:
             user.manager_id = manager.id
-    user.last_login_at = utcnow()
+    if login:
+        user.last_login_at = utcnow()
     db.flush()
     return user

@@ -1,6 +1,7 @@
 import datetime as dt
 import io
 import logging
+import re
 from pathlib import Path
 from decimal import Decimal, InvalidOperation
 from typing import List, Optional
@@ -19,7 +20,7 @@ from ..app_settings import (
 )
 from ..calendar_utils import parse_hhmm
 from ..config import get_settings
-from ..ldap_auth import diagnose
+from ..ldap_auth import LdapUnavailable, diagnose, lookup_users, sync_user
 from ..db import get_db, get_engine
 from ..ics_import import MAX_BYTES, IcsError, parse_ics
 from .. import teams as team_utils
@@ -80,6 +81,114 @@ def _user_form_ctx(db: Session, user: Optional[User]) -> dict:
         candidates = [c for c in candidates if c.id not in excluded]
     return {"edit_user": user, "managers": candidates, "teams": team_utils.all_team_names(db),
             "grades": list(db.scalars(select(Grade).order_by(Grade.code)))}
+
+
+LDAP_USERNAME = re.compile(r"^[a-z0-9][a-z0-9._@$-]{0,127}$")
+
+
+def _parse_usernames(raw: str) -> List[str]:
+    seen: dict = {}
+    for token in re.split(r"[\s,;]+", raw.lower()):
+        if token:
+            seen.setdefault(token, None)
+    return list(seen)
+
+
+@router.get("/users/ldap")
+def ldap_users_form(request: Request, db: Session = Depends(get_db)):
+    return render(request, "admin/ldap_users.html", {
+        "ldap_enabled": effective_settings(db, get_settings()).ldap_enabled, **_bulk_ctx(db)})
+
+
+@router.post("/users/ldap", dependencies=[Depends(verify_csrf)])
+def create_ldap_users(request: Request, usernames: str = Form(""), lookup: Optional[str] = Form(None), team: str = Form(""),
+                      manager_id: str = Form(""), is_expert: str = Form(""), grade_id: str = Form(""),
+                      me: User = Depends(admin_user), db: Session = Depends(get_db)):
+    """Create directory (LDAP) accounts before the people first sign in, so their team, manager and roles can be
+    prepared. At first login the account is matched by username and refreshed from the directory as usual, except for
+    the team and manager set here, which are locked against the directory."""
+    back = "/admin/users/ldap"
+    names = _parse_usernames(usernames)
+    if not names:
+        flash(request, "Enter at least one username.", "error")
+        return redirect(back)
+    if len(names) > 200:
+        flash(request, "At most 200 usernames at a time.", "error")
+        return redirect(back)
+    bad = [n for n in names if not LDAP_USERNAME.match(n)]
+    if bad:
+        flash(request, f"Invalid username(s): {', '.join(bad[:5])}.", "error")
+        return redirect(back)
+    manager = None
+    if manager_id:
+        manager = db.get(User, int(manager_id)) if manager_id.isdigit() else None
+        if manager is None or not manager.is_active or manager.is_archived:
+            flash(request, "The chosen line manager is not an active user.", "error")
+            return redirect(back)
+    grade = None
+    if grade_id:
+        grade = db.get(Grade, int(grade_id)) if grade_id.isdigit() else None
+        if grade is None:
+            flash(request, "Unknown grade.", "error")
+            return redirect(back)
+    team = team.strip()
+    expert = is_expert == "1"
+    conflict = team_utils.expert_conflict(db, team, expert)
+    if conflict:
+        flash(request, conflict, "error")
+        return redirect(back)
+
+    existing = {u for u in db.scalars(select(User.username).where(User.username.in_(names)))}
+    todo = [n for n in names if n not in existing]
+    found = {}
+    if lookup and todo:
+        try:
+            found = lookup_users(effective_settings(db, get_settings()), todo)
+        except LdapUnavailable as exc:
+            flash(request, f"Directory lookup failed: {exc}", "error")
+            return redirect(back)
+
+    created, problems, warnings = [], [f"{n}: already exists" for n in names if n in existing], []
+    for name in todo:
+        if lookup:
+            profile, note = found[name]
+            if profile is None:
+                problems.append(f"{name}: {note}")
+                continue
+            if note:
+                warnings.append(f"{profile.username}: {note}")
+            if profile.manager is not None and manager is not None:
+                profile.manager = None            # the manager chosen here wins; do not pull the directory one in
+            if profile.username != name and db.scalar(select(User.id).where(User.username == profile.username)):
+                problems.append(f"{name}: the directory account {profile.username} already exists")
+                continue
+            user = sync_user(db, profile, login=False)
+        else:
+            user = User(username=name, auth_source="ldap")
+            db.add(user)
+        if team:
+            user.team, user.team_locked = team, True
+        if manager is not None:
+            user.manager_id, user.manager_locked = manager.id, True
+        if is_expert in ("1", "0"):
+            user.is_expert = expert
+        if grade is not None:
+            user.grade_id = grade.id
+        db.flush()
+        created.append(user.username)
+    if created:
+        audit(db, me, "user_preprovision", "user", None, usernames=created, lookup=bool(lookup), team=team,
+              manager_id=manager.id if manager else None, expert=is_expert, grade=grade.code if grade else "")
+        db.commit()
+        flash(request, f"{len(created)} directory account(s) prepared: {', '.join(created[:8])}{'…' if len(created) > 8 else ''}. "
+                       "They are completed from the directory at first sign-in.", "success")
+    else:
+        db.rollback()
+    for msg in warnings[:5]:
+        flash(request, f"Warning, {msg}", "info")
+    for msg in problems[:6]:
+        flash(request, f"Skipped {msg}", "error")
+    return redirect("/admin/users" if created and not problems else back)
 
 
 @router.get("/users/new")
