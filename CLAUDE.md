@@ -66,7 +66,7 @@ A weekend day that is also a holiday counts in HL121 only (never HL130).
   LDAP members get `team_locked`), delete when it has no member at all, on-call switch. Audited (`team_create|update|delete`).
 - **Preparing LDAP users in advance** (Admin › Users › Prepare LDAP users, `GET|POST /admin/users/ldap`, admin only): create
   `auth_source=ldap` accounts before the first sign-in from a list of usernames (up to 200). Optional directory lookup
-  (`ldap_auth.lookup_users`, service account only: names, e-mail, employee ID, team, manager, group flags; usernames not found are not
+  (`ldap_auth.lookup_users`, service account only: names, e-mail, team, manager, group flags; usernames not found are not
   created; a user outside `LDAP_GROUP_REQUIRED` is created with a warning) via `sync_user(login=False)`; optional team / manager /
   Expert / grade applied to all. A team or manager set here gets `team_locked` / `manager_locked`, otherwise the directory values apply.
   At first login the existing record is matched by `ldap_dn` or username (`_upsert`) and completed as usual; LDAP group flags still
@@ -248,7 +248,7 @@ approved ──reopen (admin only, audited, latest sheet of the month only)─�
   works: one local break-glass admin).
 - **LDAP / Active Directory** (core usage): search-then-bind with a service account (`LDAP_BIND_DN`), user filter `LDAP_USER_FILTER`
   (default `(&(objectClass=user)(sAMAccountName={username}))`). LDAPS or StartTLS with the Microsoft PKI root/issuing CA (PEM). On
-  each login the user is upserted: names, mail, employeeID, team (`department`), and **manager** from the AD `manager` attribute
+  each login the user is upserted: names, mail, team (`department`), and **manager** from the AD `manager` attribute
   (the manager entry is upserted too, so the hierarchy exists before the manager logs in) unless `users.manager_locked` (admin
   override). Group mapping (nested groups via the AD matching rule `1.2.840.113556.1.4.1941`, not supported by OpenLDAP):
   `LDAP_GROUP_ADMIN` → is_admin, `LDAP_GROUP_EXPERT` → is_expert, `LDAP_GROUP_PROCUREMENT` → is_procurement, `LDAP_GROUP_REQUIRED` → may log in. An empty group variable means
@@ -294,6 +294,7 @@ approved ──reopen (admin only, audited, latest sheet of the month only)─�
 - Fonts, all SIL OFL and **self-hosted** in `static/fonts/` (latin subset, woff2, licences alongside; no external requests):
   **Space Grotesk** (headings, brand, month titles), **IBM Plex Sans** 400/500/600 (body), **JetBrains Mono** (figures, stat tiles,
   badges, table headers, eyebrows, dates/times/incident refs).
+- **Dark mode** (since 1.12.0): automatic, from the OS/browser setting (`prefers-color-scheme: dark`), pure CSS, no switch, no script (strict CSP kept). Light values are tokens in `:root`; the dark block at the end of `style.css` (`@media screen and (prefers-color-scheme: dark)`) overrides them. New colours must be tokens (`--surface-2`, `--ok-bg`, `--accent-text` for aubergine text, `--primary-solid` for gold fills under white text), never hard-coded hex. Header, buttons and the login hero keep their brand colours; signature canvas/images stay white; print stays light. `<meta name="color-scheme" content="light dark">` in `base.html`.
 - **Industrial look**: square corners (2 px radius token), flat surfaces with hard 1 px borders, no blur/gradients/glows, hard
   offset shadow only on toasts, faint engineering grid background, solid aubergine header with a gold bottom rule, uppercase
   buttons, gold top rule on stat tiles. Motion is short and linear (≤ 0.2 s fade-in of rows/cards, toasts slide 16 px, brief colour
@@ -475,10 +476,10 @@ The JS (`static/app.js`) has no automated tests; static assets are excluded from
 
 ## 9. Current state
 
-- Version **1.11.4** (LDAP *Test connection* now reports a failed search (result code, message, base, filter) instead of "0 entries"; 1.11.3: RHEL installer deploys to `/opt/timelog` and upgrades in place; 1.11.2: LDAP connections no longer follow AD referrals, `auto_referrals=False`, which broke user lookups from a domain-root search base; 1.11.1: data in bind-mounted `db-data/` and `backups/` folders instead of Docker volumes; 1.11.0: prepare LDAP users in advance; on top of 1.10.0: teams panel, bulk user edit, cut-off calendar, payroll-check block). 126 pytest tests pass on SQLite; the backup and restore tests also pass on PostgreSQL 16. SonarQube (0 issues,
+- Version **1.12.0** (automatic dark mode following the OS setting; the Employee ID attribute mapping, field and export column are removed; the unused `users.employee_id` column stays in the schema for existing databases; 1.11.4: LDAP *Test connection* now reports a failed search (result code, message, base, filter) instead of "0 entries"; 1.11.3: RHEL installer deploys to `/opt/timelog` and upgrades in place; 1.11.2: LDAP connections no longer follow AD referrals, `auto_referrals=False`, which broke user lookups from a domain-root search base; 1.11.1: data in bind-mounted `db-data/` and `backups/` folders instead of Docker volumes; 1.11.0: prepare LDAP users in advance; on top of 1.10.0: teams panel, bulk user edit, cut-off calendar, payroll-check block). 126 pytest tests pass on SQLite; the backup and restore tests also pass on PostgreSQL 16. SonarQube (0 issues,
   0 hotspots, gate passed) and Dependency-Track (0 findings) re-run clean on this version.
-- Latest offline package: `dist/timelog-1.11.4-offline-rhel9-amd64.zip` (+ `.sha256`, **without** the Docker RPMs: `INCLUDE_DOCKER_RPMS=0`), built from the 1.11.4 sources after
-  the tests passed (SonarQube / Dependency-Track last run on 1.11.0; 1.11.2 changes one line of `ldap_auth.py`). Older packages in `dist/` (1.3.1, 1.4.0, 1.7.0, 1.9.0, 1.10.0, 1.11.0, 1.11.1, 1.11.2, 1.11.3) are obsolete.
+- Latest offline package: `dist/timelog-1.12.0-offline-rhel9-amd64.zip` (+ `.sha256`, **without** the Docker RPMs: `INCLUDE_DOCKER_RPMS=0`), built from the 1.12.0 sources after
+  the tests passed (SonarQube / Dependency-Track last run on 1.11.0; 1.11.2 changes one line of `ldap_auth.py`). Older packages in `dist/` (1.3.1, 1.4.0, 1.7.0, 1.9.0, 1.10.0, 1.11.0, 1.11.1, 1.11.2, 1.11.3, 1.11.4, 1.11.5) are obsolete.
 - The local Docker instance holds no demo users: only `admin` and `tuser` (admin). Demo data for screenshots lives in a throwaway
   SQLite database, never in the local stack.
 - **Verified**: image build; the full stack (nginx HTTPS + app + PostgreSQL 16, all healthy); HTTP→HTTPS redirect; every page for

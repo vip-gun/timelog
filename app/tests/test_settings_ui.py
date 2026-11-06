@@ -10,7 +10,7 @@ LDAP_FORM = {
     "ldap_bind_dn": "CN=svc,DC=corp", "ldap_bind_password": "S3cret-bind!",
     "ldap_user_base_dn": "OU=Users,DC=corp", "ldap_user_filter": "(sAMAccountName={username})",
     "ldap_attr_username": "sAMAccountName", "ldap_attr_first_name": "givenName", "ldap_attr_last_name": "sn",
-    "ldap_attr_display_name": "displayName", "ldap_attr_email": "mail", "ldap_attr_employee_id": "employeeID",
+    "ldap_attr_display_name": "displayName", "ldap_attr_email": "mail",
     "ldap_attr_team": "department", "ldap_attr_manager": "manager", "ldap_timeout": "2",
 }
 

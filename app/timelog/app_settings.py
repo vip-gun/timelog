@@ -37,7 +37,6 @@ LDAP_FIELDS = {
     "ldap_attr_last_name": str,
     "ldap_attr_display_name": str,
     "ldap_attr_email": str,
-    "ldap_attr_employee_id": str,
     "ldap_attr_team": str,
     "ldap_attr_manager": str,
     "ldap_group_required": str,

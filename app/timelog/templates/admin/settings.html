@@ -124,7 +124,6 @@
         {{ field("ldap_attr_last_name", "Last name", "sn") }}
         {{ field("ldap_attr_display_name", "Display name", "displayName") }}
         {{ field("ldap_attr_email", "E-mail", "mail") }}
-        {{ field("ldap_attr_employee_id", "Employee ID", "employeeID") }}
         {{ field("ldap_attr_team", "Team", "department") }}
         {{ field("ldap_attr_manager", "Line manager (DN)", "manager") }}
       </div>
@@ -173,7 +172,6 @@
         <tr><th scope="row">Username</th><td class="mono">{{ p.username }}</td></tr>
         <tr><th scope="row">Name</th><td>{{ p.first_name }} {{ p.last_name }}{% if p.display_name %} <span class="muted">({{ p.display_name }})</span>{% endif %}</td></tr>
         <tr><th scope="row">E-mail</th><td>{{ p.email or "—" }}</td></tr>
-        <tr><th scope="row">Employee ID</th><td class="mono">{{ p.employee_id or "—" }}</td></tr>
         <tr><th scope="row">Team</th><td>{{ p.team or "—" }}</td></tr>
         <tr><th scope="row">Line manager</th><td>{{ p.manager.display_name or p.manager.username if p.manager else "—" }}</td></tr>
         <tr><th scope="row">Administrator</th><td>{{ "n/a (manual)" if p.is_admin is none else ("yes" if p.is_admin else "no") }}</td></tr>

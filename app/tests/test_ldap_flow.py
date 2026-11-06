@@ -25,7 +25,7 @@ class Entry:
 
 
 ALICE = Entry(ALICE_DN, {"sAMAccountName": "alice", "givenName": "Alice", "sn": "Liddell", "displayName": "Alice L",
-                         "mail": "alice@example.test", "employeeID": "E1", "department": "Prod", "manager": BOSS_DN})
+                         "mail": "alice@example.test", "department": "Prod", "manager": BOSS_DN})
 BOSS = Entry(BOSS_DN, {"sAMAccountName": "boss", "givenName": "Big", "sn": "Boss"})
 MEMBERS = {ALICE_DN: {"CN=Users", "CN=Experts"}}
 
@@ -70,8 +70,8 @@ def ldap(monkeypatch):
 
 def test_authenticate_success_maps_profile_groups_and_manager(ldap):
     p = authenticate(ldap, "alice", "good")
-    assert (p.username, p.first_name, p.last_name, p.email, p.employee_id, p.team) == (
-        "alice", "Alice", "Liddell", "alice@example.test", "E1", "Prod")
+    assert (p.username, p.first_name, p.last_name, p.email, p.team) == (
+        "alice", "Alice", "Liddell", "alice@example.test", "Prod")
     assert p.is_expert is True and p.is_admin is False
     assert p.manager.username == "boss" and p.manager.dn == BOSS_DN
 

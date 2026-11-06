@@ -154,7 +154,7 @@ def test_late_claim_creates_supplementary_sheet(browser, db, users):
     r = browser("admin").get(f"/payroll/export/control?year={supp.payroll_year}&month={supp.payroll_month}")
     rows = [row for row in load_workbook(io.BytesIO(r.content))["Overtime Payroll"].iter_rows(min_row=2, values_only=True)
             if row[2] == "Alice"]
-    assert any(row[4] == "2026-08" and "Late claim" in row[5] and row[10] == 1.0 for row in rows)
+    assert any(row[3] == "2026-08" and "Late claim" in row[4] and row[9] == 1.0 for row in rows)
     assert mgr.get(f"/overtime/2026/8?user_id={users['alice'].id}").text.count("Supplementary sheet #2") == 1
 
 
@@ -178,7 +178,7 @@ def test_export_contains_only_approved_scope(browser, db, users):
     oncall_names = [row[2] for row in wb["On-Call"].iter_rows(min_row=2, values_only=True) if row[2]]
     assert oncall_names == ["Alice"]  # carol not approved yet
     payroll = [row for row in wb["Overtime Payroll"].iter_rows(min_row=2, values_only=True) if row[2] == "Alice"][0]
-    assert payroll[8] == 3.0 and payroll[12] == 3.0 and payroll[15] == 3.0  # Sun hours, HL100, HL130
+    assert payroll[7] == 3.0 and payroll[11] == 3.0 and payroll[14] == 3.0  # Sun hours, HL100, HL130
 
     assert browser("alice").get(f"/payroll/export/control?year={year}&month={month}").status_code == 404
     assert mgr.get(f"/payroll/export/control?year={year}&month={month}").status_code == 404   # exports belong to IT Procurement / admin

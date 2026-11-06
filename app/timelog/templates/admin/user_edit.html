@@ -13,7 +13,6 @@
   <label>Last name <input name="last_name" value="{{ u.last_name if u else '' }}"></label>
   <label>Display name <input name="display_name" value="{{ u.display_name if u else '' }}"></label>
   <label>E-mail <input type="email" name="email" value="{{ u.email if u else '' }}"></label>
-  <label>Employee ID <input name="employee_id" value="{{ u.employee_id if u else '' }}"></label>
   <label>Team <input name="team" value="{{ u.team if u else '' }}" list="team-list" autocomplete="off" placeholder="Pick a team or type a new one"></label>
   <datalist id="team-list">{% for t in teams %}<option value="{{ t }}">{% endfor %}</datalist>
   <label>Line manager

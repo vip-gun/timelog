@@ -95,7 +95,7 @@ def _fmt(ws, row: int, cols: range, number_format: str) -> None:
 
 
 def _emp_cols(u: User) -> list:
-    return [u.team, u.last_name or u.full_name, u.first_name, u.employee_id]
+    return [u.team, u.last_name or u.full_name, u.first_name]
 
 
 def _work_cols(s: Sheet) -> list:
@@ -140,9 +140,9 @@ def build_export(db: Session, viewer: User, year: int, month: int, team: str = "
                 "for earlier months (shaded, 'Late claim').")
     if team:
         ws["A4"] = f"Team filter: {team}"
-    _header(ws, 6, ["Team", "Last name", "First name", "Employee ID", "Expert",
+    _header(ws, 6, ["Team", "Last name", "First name", "Expert",
                     f"On-call {month_label(year, month)}", f"Overtime {month_label(year, month)}"],
-            [24, 22, 18, 14, 8, 22, 22])
+            [24, 22, 18, 8, 22, 22])
     for u in users:
         oc = current.get((u.id, KIND_ONCALL), [])
         ot = current.get((u.id, KIND_OVERTIME), [])
@@ -157,10 +157,10 @@ def build_export(db: Session, viewer: User, year: int, month: int, team: str = "
 
     # ---------------------------------------------------------------- On-call summary
     ws = wb.create_sheet("On-Call")
-    titles = ["Team", "Last name", "First name", "Employee ID", "Work month", "Note", "Grade", "Expert",
+    titles = ["Team", "Last name", "First name", "Work month", "Note", "Grade", "Expert",
               "Days W", "Days Sat", "Days Sun", "Days H", "Total days", "Expert interventions", "Amount",
               "Signed (UTC)"]
-    _header(ws, 1, titles, [24, 22, 18, 14, 11, 20, 8, 8, 9, 9, 9, 9, 10, 13, 12, 17])
+    _header(ws, 1, titles, [24, 22, 18, 11, 20, 8, 8, 9, 9, 9, 9, 10, 13, 12, 17])
     grand = Decimal(0)
     for sh in oncall:
         u = by_id[sh.user_id]
@@ -174,13 +174,13 @@ def build_export(db: Session, viewer: User, year: int, month: int, team: str = "
             sh.snapshot_grade_code, "Yes" if sh.snapshot_is_expert else "",
             counts[WEEKDAY], counts[SATURDAY], counts[SUNDAY], counts[HOLIDAY],
             len(sh.oncall_days), interventions, float(amount), _signed(sh)])
-        _fmt(ws, ws.max_row, range(15, 16), MONEY)
+        _fmt(ws, ws.max_row, range(14, 15), MONEY)
         _shade_late(ws, sh, len(titles))
     ws.append([])
-    ws.append(["TOTAL"] + [""] * 13 + [float(grand)])
+    ws.append(["TOTAL"] + [""] * 12 + [float(grand)])
     ws.cell(row=ws.max_row, column=1).font = TOTAL_FONT
-    ws.cell(row=ws.max_row, column=15).font = TOTAL_FONT
-    _fmt(ws, ws.max_row, range(15, 16), MONEY)
+    ws.cell(row=ws.max_row, column=14).font = TOTAL_FONT
+    _fmt(ws, ws.max_row, range(14, 15), MONEY)
 
     # ---------------------------------------------------------------- On-call grid (legacy layout, work month only)
     ws = wb.create_sheet("On-Call Grid")
@@ -221,15 +221,15 @@ def build_export(db: Session, viewer: User, year: int, month: int, team: str = "
 
     # ---------------------------------------------------------------- Overtime payroll
     ws = wb.create_sheet("Overtime Payroll")
-    titles = ["Team", "Last name", "First name", "Employee ID", "Work month", "Note",
+    titles = ["Team", "Last name", "First name", "Work month", "Note",
               "Hours W", "Hours Sat", "Hours Sun", "Hours H", "Total hours", "Night hours",
               "HL100 Normal", "HL101 Normal 50%", "HL111 Night 30%", "HL130 Sunday 70%", "HL121 Legal 200%"]
     if til:
         titles += ["TIL hours worked", "TIL credit (no payment)"]
-    n_values = len(titles) - 6
+    n_values = len(titles) - 5
     titles.append("Signed (UTC)")
-    _header(ws, 1, titles, [24, 22, 18, 14, 11, 20] + [10] * n_values + [17])
-    last_value_col = 6 + n_values
+    _header(ws, 1, titles, [24, 22, 18, 11, 20] + [10] * n_values + [17])
+    last_value_col = 5 + n_values
     sums = [Decimal(0)] * n_values
     for sh in overtime:
         u = by_id[sh.user_id]
@@ -239,20 +239,20 @@ def build_export(db: Session, viewer: User, year: int, month: int, team: str = "
                   t.hl100, t.hl101, t.hl111, t.hl130, t.hl121] + ([t.til_hours, t.til_credit] if til else [])
         sums = [a + b for a, b in zip(sums, values)]
         ws.append(_emp_cols(u) + _work_cols(sh) + [float(v) for v in values] + [_signed(sh)])
-        _fmt(ws, ws.max_row, range(7, last_value_col + 1), HOURS)
+        _fmt(ws, ws.max_row, range(6, last_value_col + 1), HOURS)
         _shade_late(ws, sh, len(titles))
     ws.append([])
-    ws.append(["TOTAL", "", "", "", "", ""] + [float(v) for v in sums])
+    ws.append(["TOTAL", "", "", "", ""] + [float(v) for v in sums])
     for col in range(1, last_value_col + 1):
         ws.cell(row=ws.max_row, column=col).font = TOTAL_FONT
-    _fmt(ws, ws.max_row, range(7, last_value_col + 1), HOURS)
+    _fmt(ws, ws.max_row, range(6, last_value_col + 1), HOURS)
 
     # ---------------------------------------------------------------- Overtime detail
     ws = wb.create_sheet("Overtime Detail")
-    titles = ["Team", "Last name", "First name", "Employee ID", "Work month", "Note", "Date", "Day type",
+    titles = ["Team", "Last name", "First name", "Work month", "Note", "Date", "Day type",
               "Start", "End", "Hours", "Night hours"] + (["Compensation", "TIL credit"] if til else []) + [
               "On-call intervention", "Pre-approved", "Incident", "Description"]
-    _header(ws, 1, titles, [24, 22, 18, 14, 11, 20, 12, 14, 8, 8, 8, 8] + ([13, 10] if til else []) + [12, 12, 16, 60])
+    _header(ws, 1, titles, [24, 22, 18, 11, 20, 12, 14, 8, 8, 8, 8] + ([13, 10] if til else []) + [12, 12, 16, 60])
     for sh in overtime:
         u = by_id[sh.user_id]
         for e in sh.overtime_entries:
@@ -262,25 +262,25 @@ def build_export(db: Session, viewer: User, year: int, month: int, team: str = "
                 "Yes" if e.on_call_intervention else "", "Yes" if e.preapproved else "",
                 e.incident_ref, e.description,
             ])
-            ws.cell(row=ws.max_row, column=7).number_format = "DD/MM/YYYY"
-            _fmt(ws, ws.max_row, range(11, 13), HOURS)
+            ws.cell(row=ws.max_row, column=6).number_format = "DD/MM/YYYY"
+            _fmt(ws, ws.max_row, range(10, 12), HOURS)
             if til:
-                _fmt(ws, ws.max_row, range(14, 15), HOURS)
+                _fmt(ws, ws.max_row, range(13, 14), HOURS)
             _shade_late(ws, sh, len(titles))
 
     # ---------------------------------------------------------------- On-call detail
     ws = wb.create_sheet("On-Call Detail")
-    titles = ["Team", "Last name", "First name", "Employee ID", "Work month", "Note", "Date", "Day type",
+    titles = ["Team", "Last name", "First name", "Work month", "Note", "Date", "Day type",
               "Intervention", "Rate", "Amount", "Incident", "Comment"]
-    _header(ws, 1, titles, [24, 22, 18, 14, 11, 20, 12, 14, 12, 9, 10, 16, 60])
+    _header(ws, 1, titles, [24, 22, 18, 11, 20, 12, 14, 12, 9, 10, 16, 60])
     for sh in oncall:
         u = by_id[sh.user_id]
         for d in sh.oncall_days:
             ws.append(_emp_cols(u) + _work_cols(sh) + [
                 d.date, DAY_TYPE_LABELS[d.day_type], "Yes" if d.intervention else "",
                 float(d.rate), float(d.amount), d.incident_ref, d.comment])
-            ws.cell(row=ws.max_row, column=7).number_format = "DD/MM/YYYY"
-            _fmt(ws, ws.max_row, range(10, 12), MONEY)
+            ws.cell(row=ws.max_row, column=6).number_format = "DD/MM/YYYY"
+            _fmt(ws, ws.max_row, range(9, 11), MONEY)
             _shade_late(ws, sh, len(titles))
 
     buf = io.BytesIO()

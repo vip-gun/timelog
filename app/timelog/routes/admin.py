@@ -209,7 +209,7 @@ def save_user(
     request: Request,
     user_id: Optional[int] = Form(None), username: str = Form(""),
     first_name: str = Form(""), last_name: str = Form(""), display_name: str = Form(""),
-    email: str = Form(""), employee_id: str = Form(""), team: str = Form(""),
+    email: str = Form(""), team: str = Form(""),
     manager_id: Optional[str] = Form(None), manager_locked: Optional[str] = Form(None), team_locked: Optional[str] = Form(None),
     grade_id: Optional[str] = Form(None), is_expert: Optional[str] = Form(None),
     is_admin: Optional[str] = Form(None), is_procurement: Optional[str] = Form(None), is_active: Optional[str] = Form(None),
@@ -232,7 +232,7 @@ def save_user(
     try:
         user.first_name, user.last_name = first_name.strip(), last_name.strip()
         user.display_name, user.email = display_name.strip(), email.strip()
-        user.employee_id, user.team = employee_id.strip(), team.strip()
+        user.team = team.strip()
         user.grade_id = int(grade_id) if grade_id else None
         user.is_expert = bool(is_expert)
         user.manager_locked = bool(manager_locked)

@@ -28,7 +28,6 @@ class LdapProfile:
     last_name: str = ""
     display_name: str = ""
     email: str = ""
-    employee_id: str = ""
     team: str = ""
     manager: Optional["LdapProfile"] = None
     is_admin: Optional[bool] = None  # None = not managed by LDAP
@@ -88,7 +87,7 @@ def _attr(entry, name: str) -> str:
 def _attributes(s: Settings) -> list:
     names = [
         s.ldap_attr_username, s.ldap_attr_first_name, s.ldap_attr_last_name,
-        s.ldap_attr_display_name, s.ldap_attr_email, s.ldap_attr_employee_id,
+        s.ldap_attr_display_name, s.ldap_attr_email,
         s.ldap_attr_team, s.ldap_attr_manager,
     ]
     return [n for n in names if n]
@@ -102,7 +101,6 @@ def _profile_from_entry(s: Settings, entry) -> LdapProfile:
         last_name=_attr(entry, s.ldap_attr_last_name),
         display_name=_attr(entry, s.ldap_attr_display_name),
         email=_attr(entry, s.ldap_attr_email),
-        employee_id=_attr(entry, s.ldap_attr_employee_id),
         team=_attr(entry, s.ldap_attr_team),
     )
 
@@ -267,7 +265,7 @@ def _upsert(db: Session, p: LdapProfile) -> User:
         db.add(user)
     if user.auth_source == "ldap":
         user.ldap_dn = p.dn
-    for attr in ("first_name", "last_name", "display_name", "email", "employee_id", "team"):
+    for attr in ("first_name", "last_name", "display_name", "email", "team"):
         val = getattr(p, attr)
         if val and not (attr == "team" and user.team_locked):
             setattr(user, attr, val)

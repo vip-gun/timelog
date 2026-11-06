@@ -68,7 +68,7 @@ class User(Base):
     last_name: Mapped[str] = mapped_column(String(128), default="")
     display_name: Mapped[str] = mapped_column(String(256), default="")
     email: Mapped[str] = mapped_column(String(256), default="")
-    employee_id: Mapped[str] = mapped_column(String(64), default="")
+    employee_id: Mapped[str] = mapped_column(String(64), default="")   # unused since 1.11.5; kept so existing databases and backups stay valid
     team: Mapped[str] = mapped_column(String(128), default="")
 
     manager_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)

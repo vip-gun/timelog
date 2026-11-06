@@ -32,7 +32,7 @@ def _sheets(db, user, kind):
 
 
 def test_version_and_tab_title(browser, users):
-    assert __version__ == "1.11.4"
+    assert __version__ == "1.12.0"
     assert "<title>Timelog - Dashboard</title>" in browser("alice").get("/").text
     assert "<title>Timelog - Sign In</title>" in browser().get("/login").text
 
@@ -161,3 +161,10 @@ def test_only_owner_submits_or_withdraws_and_approvals_list_overtime(browser, db
     assert _sheets(db, users["alice"], "overtime")[0].status == "submitted"
     carol.post(f"/submit/{sheet.year}/{sheet.month}")  # a colleague only ever submits their own (empty) month
     assert _sheets(db, users["alice"], "overtime")[0].status == "submitted"
+
+
+def test_dark_mode_follows_the_os_setting(browser):
+    html = browser().get("/login").text
+    assert 'name="color-scheme" content="light dark"' in html
+    css = browser().get("/static/style.css").text
+    assert "@media screen and (prefers-color-scheme: dark)" in css and "--surface-2" in css

@@ -76,7 +76,6 @@ class Settings:
     ldap_attr_last_name: str = "sn"
     ldap_attr_display_name: str = "displayName"
     ldap_attr_email: str = "mail"
-    ldap_attr_employee_id: str = "employeeID"
     ldap_attr_team: str = "department"
     ldap_attr_manager: str = "manager"
     ldap_group_required: str = ""
@@ -138,7 +137,6 @@ class Settings:
             ldap_attr_last_name=_str("LDAP_ATTR_LAST_NAME", "sn"),
             ldap_attr_display_name=_str("LDAP_ATTR_DISPLAY_NAME", "displayName"),
             ldap_attr_email=_str("LDAP_ATTR_EMAIL", "mail"),
-            ldap_attr_employee_id=_str("LDAP_ATTR_EMPLOYEE_ID", "employeeID"),
             ldap_attr_team=_str("LDAP_ATTR_TEAM", "department"),
             ldap_attr_manager=_str("LDAP_ATTR_MANAGER", "manager"),
             ldap_group_required=_str("LDAP_GROUP_REQUIRED"),

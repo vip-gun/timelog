@@ -229,7 +229,7 @@ openssl s_client -connect timelog.corp.example.lu:443 -servername timelog.corp.e
       <tr><th scope="row">CA certificate</th><td>Paste the PKI root (and issuing) CA as PEM, or provide <code>certs/ldap-ca.pem</code> (path <code>/certs/ldap-ca.pem</code> in the container). Keep "Verify the server certificate" on.</td></tr>
       <tr><th scope="row">Bind DN / password</th><td>A read-only <strong>service account</strong> used to search for users. The password is encrypted with a key derived from <code>SECRET_KEY</code> and never displayed; rotating <code>SECRET_KEY</code> means re-entering it.</td></tr>
       <tr><th scope="row">User search base / filter</th><td>For example <code>OU=Users,DC=corp,DC=example,DC=lu</code> and <code>(sAMAccountName={username})</code>. The filter must contain <code>{username}</code>.</td></tr>
-      <tr><th scope="row">Attribute mapping</th><td>Defaults suit AD: <code>sAMAccountName</code>, <code>givenName</code>, <code>sn</code>, <code>displayName</code>, <code>mail</code>, <code>employeeID</code>, <code>department</code> (team), <code>manager</code>.</td></tr>
+      <tr><th scope="row">Attribute mapping</th><td>Defaults suit AD: <code>sAMAccountName</code>, <code>givenName</code>, <code>sn</code>, <code>displayName</code>, <code>mail</code>, <code>department</code> (team), <code>manager</code>.</td></tr>
       <tr><th scope="row">Groups</th><td>DNs of the groups for <em>Allowed to sign in</em>, <em>Administrators</em> and <em>Expert employees</em>. Nested membership is resolved by AD. If a group is empty, that flag is managed by hand in <a href="/admin/users">Users</a>.</td></tr>
     </tbody>
   </table>
@@ -237,7 +237,7 @@ openssl s_client -connect timelog.corp.example.lu:443 -servername timelog.corp.e
   <h3>How login works</h3>
   <ol>
     <li>The service account searches for the user; the user's own password is then checked with a bind. Empty passwords are refused.</li>
-    <li>On each login the user is created or updated: names, e-mail, employee ID, team and the <strong>line manager</strong> (the manager entry is created too, so the hierarchy exists before they log in), unless the manager is locked.</li>
+    <li>On each login the user is created or updated: names, e-mail, team and the <strong>line manager</strong> (the manager entry is created too, so the hierarchy exists before they log in), unless the manager is locked.</li>
     <li>Group membership sets the administrator / Expert flags and decides who may log in.</li>
   </ol>
 

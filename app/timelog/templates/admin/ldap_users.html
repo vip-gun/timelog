@@ -7,7 +7,7 @@
   <div class="actions"><a class="btn btn-ghost" href="/admin/users">Back to users</a></div>
 </div>
 <p class="help">Without this page an LDAP account is created at the person's <strong>first sign-in</strong>. Here you create the accounts <strong>in advance</strong>, so their team, line manager, Expert flag and grade are ready before they first sign in
-  (and so managers appear in the hierarchy). The people still sign in with their directory password; names, e-mail and employee ID are completed from the directory at that moment.
+  (and so managers appear in the hierarchy). The people still sign in with their directory password; names and e-mail are completed from the directory at that moment.
   {% if not ldap_enabled %}<strong>LDAP sign-in is currently switched off</strong> in <a href="/admin/settings">Settings</a>: accounts can be prepared, but nobody can sign in with them until it is enabled.{% endif %}</p>
 <form method="post" action="/admin/users/ldap" class="card form-grid">
   <input type="hidden" name="csrf_token" value="{{ csrf }}">
