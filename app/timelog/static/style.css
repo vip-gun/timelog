@@ -472,11 +472,13 @@ pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
 .callout-warn .callout-title { color: var(--primary); }
 .tag-preapproved { background: var(--pre-bg); color: var(--pre-text); border: 1px solid var(--pre-border); font-weight: 700; }
 
-/* Dark mode: follows the operating system / browser setting (prefers-color-scheme), no switch and no script.
+/* Dark mode. Default ("auto"): follows the operating system / browser setting (prefers-color-scheme). A user can force
+   it from the header button (users.theme -> <html data-theme="light|dark">). Same values in both blocks: edit both.
    The header, buttons and aubergine blocks keep their colours; surfaces, text and state colours are swapped.
    Print always stays light. */
+:root[data-theme="light"] { color-scheme: light; }
 @media screen and (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     color-scheme: dark;
     --primary: #C9A961; --primary-light: #D6B873; --primary-vlight: #8F7A4B; --primary-vvlight: #2B2533; --primary-tint: #262030;
     --secondary-vlight: #7A6F85; --secondary-tint: #2A2433;
@@ -492,7 +494,34 @@ pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
     --chk-ok-bg: #16302A; --chk-ko-bg: #35202A;
     --shadow-lg: 4px 4px 0 rgba(0, 0, 0, .5);
   }
-  .btn-danger:hover { color: #fff; }
-  pre { background: #0D0B11; color: #E2DFE8; }
-  .guide-shot { filter: brightness(.85); }
+  :root:not([data-theme="light"]) .btn-danger:hover { color: #fff; }
+  :root:not([data-theme="light"]) pre { background: #0D0B11; color: #E2DFE8; }
+  :root:not([data-theme="light"]) .guide-shot { filter: brightness(.85); }
 }
+@media screen {
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --primary: #C9A961; --primary-light: #D6B873; --primary-vlight: #8F7A4B; --primary-vvlight: #2B2533; --primary-tint: #262030;
+    --secondary-vlight: #7A6F85; --secondary-tint: #2A2433;
+    --bg: #131018; --surface: #1D1925; --text: #E2DFE8; --heading: #F6F4F9; --muted: #A39CB0; --border: #3A3346;
+    --error: #FF8A8A; --success: #4FB382; --warning: #E5A93D;
+    --accent-text: #D9CFE3;
+    --grid-line: rgba(217, 207, 227, .035);
+    --input-bg: #17131E; --input-focus: #221D2B; --surface-2: #231E2C; --row-line: #2D2737;
+    --weekend-bg: #211C29; --oncall-bg: #2D2618; --week-bg: #1A1621;
+    --err-bg: #3A1A1F; --err-border: #6B2D35; --err-text: #FFB4B4; --danger-border: #6B2D35;
+    --warn-bg: #3A2D12; --warn-text: #F2C46B; --ok-bg: #16352A; --ok-text: #8FDDB4;
+    --bad-bg: #3A1A1F; --bad-text: #FFB4B4; --pre-bg: #382E12; --pre-text: #EBD07A; --pre-border: #6B5A25;
+    --chk-ok-bg: #16302A; --chk-ko-bg: #35202A;
+    --shadow-lg: 4px 4px 0 rgba(0, 0, 0, .5);
+  }
+  :root[data-theme="dark"] .btn-danger:hover { color: #fff; }
+  :root[data-theme="dark"] pre { background: #0D0B11; color: #E2DFE8; }
+  :root[data-theme="dark"] .guide-shot { filter: brightness(.85); }
+}
+
+/* Theme button in the header: a small drawn disc (half = auto, filled = dark, hollow = light) */
+.theme-btn { position: relative; width: 30px; height: 30px; padding: 0; }
+.theme-btn::before { content: ""; position: absolute; left: 8px; top: 8px; width: 12px; height: 12px; border-radius: 50%; border: 2px solid currentColor; }
+.theme-btn.is-auto::before { background: linear-gradient(90deg, currentColor 50%, transparent 50%); }
+.theme-btn.is-dark::before { background: currentColor; }

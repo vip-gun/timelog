@@ -32,7 +32,7 @@ def _sheets(db, user, kind):
 
 
 def test_version_and_tab_title(browser, users):
-    assert __version__ == "1.12.0"
+    assert __version__ == "1.13.0"
     assert "<title>Timelog - Dashboard</title>" in browser("alice").get("/").text
     assert "<title>Timelog - Sign In</title>" in browser().get("/login").text
 
@@ -168,3 +168,16 @@ def test_dark_mode_follows_the_os_setting(browser):
     assert 'name="color-scheme" content="light dark"' in html
     css = browser().get("/static/style.css").text
     assert "@media screen and (prefers-color-scheme: dark)" in css and "--surface-2" in css
+
+
+def test_user_can_force_the_theme(browser, db, users):
+    from timelog.models import User
+    b = browser("alice")
+    assert "data-theme" not in b.get("/").text                      # default: follows the OS
+    assert 'name="theme" value="dark"' in b.get("/").text           # next step of the cycle
+    assert b.post("/preferences/theme", {"theme": "dark", "back": "/oncall"}).headers["location"] == "/oncall"
+    assert '<html lang="en" data-theme="dark">' in b.get("/").text
+    assert browser("bob").get("/").text.count("data-theme") == 0     # per user
+    b.post("/preferences/theme", {"theme": "nonsense", "back": "//evil.test"})   # invalid value = auto, no open redirect
+    db.expire_all()
+    assert db.query(User).filter_by(username="alice").one().theme == ""

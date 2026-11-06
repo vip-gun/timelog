@@ -147,7 +147,7 @@ approved ──reopen (admin, audited)──▶ draft</code></pre>
 
 <section class="card docs" id="payrun">
   <h2>Payroll run &amp; cut-off</h2>
-  <p>Finance accepts the monthly reports until a <strong>cut-off</strong>: a date set per month in the <a href="/payroll/cutoffs">cut-off calendar</a> (default pattern: day {{ payroll_cutoff }} of the following month, Admin › Settings). The process is controlled in the application:</p>
+  <p>Finance accepts the monthly reports until a <strong>cut-off</strong>: a date set per month in the <a href="/payroll/cutoffs">cut-off calendar</a> (default pattern: day {{ payroll_cutoff }} of the following month, Admin › Settings). Work of month n is declared in month n+1, so the <strong>cut-off of month n+1</strong> applies to it: the July row of the calendar is the date by which June sheets must be approved. The process is controlled in the application:</p>
   <ol>
     <li><strong>Employees and managers</strong> submit and approve as usual. Everything approved up to the cut-off is paid with its work month.</li>
     <li><strong>IT Procurement</strong> opens <em>Payroll</em>, chooses the period, and downloads the <em>on-call</em> and <em>overtime</em> reports (whole organisation: the work month plus, one tab per earlier month, everything that was validated late). The page lists what is included, with approval dates, and what is still waiting for approval.</li>

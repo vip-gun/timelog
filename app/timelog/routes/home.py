@@ -55,6 +55,13 @@ def dashboard(request: Request, me: User = Depends(current_user), db: Session = 
                                               "show_amounts": can_see_amounts(db, me, me)})
 
 
+@router.post("/preferences/theme", dependencies=[Depends(verify_csrf)])
+def set_theme(theme: str = Form(""), back: str = Form("/"), me: User = Depends(current_user), db: Session = Depends(get_db)):
+    me.theme = theme if theme in ("light", "dark") else ""
+    db.commit()
+    return redirect(back if back.startswith("/") and not back.startswith("//") else "/")
+
+
 @router.post("/notices/{notice_id}/read", dependencies=[Depends(verify_csrf)])
 def dismiss_notice(notice_id: int, back: str = Form("/"), me: User = Depends(current_user), db: Session = Depends(get_db)):
     notice = db.get(Notification, notice_id)

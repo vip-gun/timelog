@@ -9,20 +9,22 @@
     <a class="btn btn-ghost" href="/payroll/cutoffs?year={{ year + 1 }}">{{ year + 1 }} &rarr;</a>
   </div>
 </div>
-<p class="help">One date per payroll month: a sheet <strong>approved on or before</strong> that date is paid with that month; a later approval is paid with the following month and the employee is notified.
-  Leave a date empty to use the default pattern (day {{ day }} of the following month{% if user.is_admin %}, set in <a href="/admin/settings">Admin &rsaquo; Settings</a>{% endif %}).
+<p class="help">One cut-off date per month, applying to the <strong>previous month's work</strong>: employees declare June in early July, so the
+  <strong>July</strong> cut-off is the date by which June sheets must be <strong>approved</strong> to be paid with June. A later approval is paid with the following month and the employee is notified.
+  Leave a date empty to use the default pattern (day {{ day }} of the month after the work month{% if user.is_admin %}, set in <a href="/admin/settings">Admin &rsaquo; Settings</a>{% endif %}).
   Changing a date affects sheets approved from now on; sheets already approved keep their payroll month. Months already sent to Finance are locked.</p>
 <form method="post" action="/payroll/cutoffs" class="card">
   <input type="hidden" name="csrf_token" value="{{ csrf }}">
   <input type="hidden" name="year" value="{{ year }}">
   <div class="table-wrap">
   <table class="table animate">
-    <thead><tr><th scope="col">Payroll month</th><th scope="col">Cut-off date</th><th scope="col">Default pattern</th><th scope="col">Status</th></tr></thead>
+    <thead><tr><th scope="col">Cut-off month</th><th scope="col">Applies to work of</th><th scope="col">Cut-off date</th><th scope="col">Default pattern</th><th scope="col">Status</th></tr></thead>
     <tbody>
     {% for r in rows %}
       <tr>
         <th scope="row">{{ r.label }}</th>
-        <td><label class="sr-only" for="d_{{ r.month }}">Cut-off date for {{ r.label }}</label>
+        <td>{{ r.work }}</td>
+        <td><label class="sr-only" for="d_{{ r.month }}">{{ r.label }} cut-off date (work of {{ r.work }})</label>
           <input type="date" id="d_{{ r.month }}" name="d_{{ r.month }}" value="{{ r.date.isoformat() if r.date }}" {% if r.closed %}disabled{% endif %}></td>
         <td class="muted">{{ r.default|date }}{% if not r.date %} <span class="tag">in use</span>{% endif %}</td>
         <td>{% if r.closed %}<span class="badge badge-approved">sent to Finance</span>{% elif r.date %}<span class="tag">custom</span>{% else %}<span class="muted">default</span>{% endif %}</td>

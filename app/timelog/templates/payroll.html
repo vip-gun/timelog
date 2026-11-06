@@ -26,7 +26,7 @@
     {% if run.note %}<br><span class="muted">Note: {{ run.note }}</span>{% endif %}</p>
   <p class="help">This period is closed: declarations approved from now on are paid with the following month. You can still download the reports to check what was sent.</p>
   {% else %}
-  <p class="help">Finance cut-off for this period: {% if deadline %}<strong>{{ deadline|date }}</strong>{% else %}closed{% endif %} (<a href="/payroll/cutoffs?year={{ year }}">cut-off calendar</a>). Approvals after the cut-off, or after you record that the reports were sent, are paid with the following month and the employee is notified.</p>
+  <p class="help">Finance cut-off for this period: {% if deadline %}<strong>{{ deadline|date }}</strong>{% else %}closed{% endif %} (<a href="/payroll/cutoffs?year={{ shift_month(year, month, 1)[0] }}">cut-off calendar</a>). Approvals after the cut-off, or after you record that the reports were sent, are paid with the following month and the employee is notified.</p>
   {% endif %}
   <div class="stats">
     <div class="stat"><span class="label">On-call sheets</span><span class="value">{{ counts.oncall }}</span></div>

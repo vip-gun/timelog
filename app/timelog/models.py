@@ -85,6 +85,8 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     # Archived: disabled and hidden from the user list; every record (sheets, payroll, audit) is kept
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Colour theme chosen by the user: "" = follow the operating system, "light" or "dark"
+    theme: Mapped[str] = mapped_column(String(8), default="")
 
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
     last_login_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime, nullable=True)

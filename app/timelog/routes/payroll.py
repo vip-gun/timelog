@@ -68,13 +68,18 @@ def page(request: Request, year: Optional[int] = None, month: Optional[int] = No
 
 @router.get("/cutoffs")
 def cutoffs(request: Request, year: Optional[int] = None, me: User = Depends(payroll_user), db: Session = Depends(get_db)):
-    """Cut-off calendar: one date per payroll month, editable by IT Procurement and administrators."""
+    """Cut-off calendar, editable by IT Procurement and administrators. A row is a cut-off month: work of month n is
+    declared in n+1, so the July row holds the date that applies to June work (stored under payroll month June)."""
     s = get_settings()
     year = year or dt.date.today().year
     check_month(year, 1)
     explicit, rule, closed = cutoff_dates(db), cutoff_rule(db, s), workflow.closed_periods(db)
-    rows = [{"month": m, "label": month_label(year, m), "date": explicit.get((year, m)), "default": calc.default_cutoff_date(year, m, payroll_cutoff(db, s)),
-             "effective": rule(year, m), "closed": (year, m) in closed} for m in range(1, 13)]
+    rows = []
+    for c in range(1, 13):
+        py, pm = shift_month(year, c, -1)      # payroll month (= work month) this cut-off month applies to
+        rows.append({"month": c, "label": month_label(year, c), "work": month_label(py, pm), "date": explicit.get((py, pm)),
+                     "default": calc.default_cutoff_date(py, pm, payroll_cutoff(db, s)), "effective": rule(py, pm),
+                     "closed": (py, pm) in closed})
     return render(request, "payroll_cutoffs.html", {"year": year, "rows": rows, "day": payroll_cutoff(db, s)})
 
 
@@ -89,40 +94,42 @@ async def save_cutoffs(request: Request, me: User = Depends(payroll_user), db: S
     url = f"/payroll/cutoffs?year={year}"
     closed, explicit = workflow.closed_periods(db), cutoff_dates(db)
     updates, errors = {}, []
-    for m in range(1, 13):
-        raw = str(form.get(f"d_{m}", "")).strip()
-        if (year, m) in closed:
+    for c in range(1, 13):                # c = cut-off month of the form; the date is stored under the work month before it
+        raw = str(form.get(f"d_{c}", "")).strip()
+        period = shift_month(year, c, -1)
+        if period in closed:
             continue                      # sent to Finance: the date no longer matters
         if not raw:
-            updates[m] = None
+            updates[period] = None
             continue
+        label = f"{month_label(year, c)} cut-off"
         try:
             d = dt.date.fromisoformat(raw)
         except ValueError:
-            errors.append(f"{month_label(year, m)}: invalid date.")
+            errors.append(f"{label}: invalid date.")
             continue
-        first = dt.date(year, m, 1)
+        first = dt.date(*period, 1)
         if d < first or d > first + dt.timedelta(days=150):
-            errors.append(f"{month_label(year, m)}: the cut-off must fall between {first:%d/%m/%Y} and {first + dt.timedelta(days=150):%d/%m/%Y}.")
+            errors.append(f"{label}: the date must fall between {first:%d/%m/%Y} and {first + dt.timedelta(days=150):%d/%m/%Y}.")
             continue
-        updates[m] = d
+        updates[period] = d
     if errors:
         for e in errors[:6]:
             flash(request, e, "error")
         return redirect(url)
     changes = {}
-    for m, d in updates.items():
-        old = explicit.get((year, m))
+    for (py, pm), d in updates.items():
+        old = explicit.get((py, pm))
         if d == old:
             continue
-        row = db.get(PayrollCutoff, (year, m))
+        row = db.get(PayrollCutoff, (py, pm))
         if d is None:
             db.delete(row)
         elif row is None:
-            db.add(PayrollCutoff(year=year, month=m, cutoff_date=d, updated_by_id=me.id))
+            db.add(PayrollCutoff(year=py, month=pm, cutoff_date=d, updated_by_id=me.id))
         else:
             row.cutoff_date, row.updated_by_id, row.updated_at = d, me.id, utcnow()
-        changes[f"{year}-{m:02d}"] = {"from": old.isoformat() if old else None, "to": d.isoformat() if d else None}
+        changes[f"{py}-{pm:02d}"] = {"from": old.isoformat() if old else None, "to": d.isoformat() if d else None}
     if changes:
         workflow.audit(db, me, "payroll_cutoffs_update", "settings", None, changes=changes)
         db.commit()

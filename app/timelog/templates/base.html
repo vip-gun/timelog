@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en"{% if user and user.theme %} data-theme="{{ user.theme }}"{% endif %}>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -42,6 +42,14 @@
   {% if user.is_admin %}<a class="admin-link {{ 'active' if path.startswith('/admin') }}" href="/admin/users">Admin</a>{% endif %}
   <div class="who">
     <span class="name">{{ user.full_name }}{% if user.is_expert %} <span class="tag">Expert</span>{% endif %}{% if user.is_admin %} <span class="tag">Admin</span>{% endif %}</span>
+    {% set theme = user.theme or "auto" %}
+    {% set next_theme = {"auto": "dark", "dark": "light", "light": ""}[theme] %}
+    <form method="post" action="/preferences/theme" class="inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <input type="hidden" name="back" value="{{ request.url.path }}{{ '?' ~ request.url.query if request.url.query }}">
+      <input type="hidden" name="theme" value="{{ next_theme }}">
+      <button class="link theme-btn is-{{ theme }}" title="Colour theme: {{ theme }} (click to change)"><span class="sr-only">Colour theme: {{ theme }}. Switch to {{ next_theme or 'auto' }}.</span></button>
+    </form>
     <form method="post" action="/logout" class="inline">
       <input type="hidden" name="csrf_token" value="{{ csrf }}">
       <button class="link">Sign Out</button>

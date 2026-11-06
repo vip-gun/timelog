@@ -259,8 +259,8 @@ def test_cutoff_calendar_editable_by_procurement_and_admin(browser, db, users):
     proc, admin, mgr = browser("proc"), browser("admin"), browser("manager")
     assert mgr.get("/payroll/cutoffs").status_code == 404 and mgr.post("/payroll/cutoffs", {"year": "2026"}).status_code == 404
     page = proc.get("/payroll/cutoffs?year=2026")
-    assert page.status_code == 200 and 'name="d_8"' in page.text
-    r = proc.post("/payroll/cutoffs", {"year": "2026", "d_8": "2026-09-22", "d_9": "2026-10-02"})
+    assert page.status_code == 200 and 'name="d_9"' in page.text and "Applies to work of" in page.text
+    r = proc.post("/payroll/cutoffs", {"year": "2026", "d_9": "2026-09-22", "d_10": "2026-10-02"})   # September row = August work
     assert r.status_code == 303
     db.expire_all()
     assert {(c.year, c.month): c.cutoff_date.isoformat() for c in db.query(PayrollCutoff)} == {(2026, 8): "2026-09-22", (2026, 9): "2026-10-02"}
@@ -268,12 +268,12 @@ def test_cutoff_calendar_editable_by_procurement_and_admin(browser, db, users):
     assert rule(2026, 8).isoformat() == "2026-09-22" and rule(2026, 10).day == 5         # month without a date: default pattern
     assert db.query(AuditLog).filter_by(action="payroll_cutoffs_update").count() == 1
     # admin can change and clear dates; invalid input is refused as a whole
-    admin.post("/payroll/cutoffs", {"year": "2026", "d_8": "2026-09-25"})
+    admin.post("/payroll/cutoffs", {"year": "2026", "d_9": "2026-09-25", "d_1": "2026-01-07"})   # the January row is December work (2025)
     db.expire_all()
-    assert [(c.month, c.cutoff_date.isoformat()) for c in db.query(PayrollCutoff)] == [(8, "2026-09-25")]
-    admin.post("/payroll/cutoffs", {"year": "2026", "d_8": "2026-09-25", "d_3": "2025-01-01"})   # before the month: refused
+    assert {(c.year, c.month): c.cutoff_date.isoformat() for c in db.query(PayrollCutoff)} == {(2026, 8): "2026-09-25", (2025, 12): "2026-01-07"}
+    admin.post("/payroll/cutoffs", {"year": "2026", "d_9": "2026-09-25", "d_1": "2026-01-07", "d_3": "2025-01-01"})   # before the month: refused
     db.expire_all()
-    assert db.query(PayrollCutoff).count() == 1
+    assert db.query(PayrollCutoff).count() == 2
     # the admin settings page points to the calendar and lists the upcoming dates
     assert "/payroll/cutoffs" in admin.get("/admin/settings").text
     assert "Must be approved by" in browser("alice").get("/guide").text
