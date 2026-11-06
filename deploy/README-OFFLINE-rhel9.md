@@ -40,10 +40,10 @@ Then, in this order:
 1. Take a backup (Admin > Backup > *Back up now*) and download it.
 2. Unzip the new package next to the installed one, copy the configuration, upgrade:
    ```bash
-   cp old/.env new/.env ; cp -r old/certs/* new/certs/
+   cp old/.env new/.env ; cp -r old/certs/* new/certs/ ; cp -a old/db-data old/backups new/   # stop the old services first
    cd new && sudo ./install.sh --upgrade
    ```
-   Data lives in Docker volumes (`db-data`, `backups`) and is kept. New tables are created by the application at start-up.
+   Data lives in the folders `db-data/` and `backups/` next to `docker-compose.yml` and is kept (an upgrade from a version before 1.11.1 copies the old Docker volumes there once). New tables are created by the application at start-up.
 3. Check the version in the page footer or at `https://<server>/healthz`.
 To go back, run `./install.sh --upgrade` from the previous package folder (and restore the backup if needed).
 

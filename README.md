@@ -23,7 +23,7 @@ The app runs as three containers (Docker Compose). Only `proxy` publishes ports.
 
 - `proxy`: nginx, which terminates HTTPS with your Microsoft PKI certificate.
 - `app`: Python / FastAPI. It has no CDN or external resources and needs no internet at runtime.
-- `db`: PostgreSQL 16 (volume `db-data`).
+- `db`: PostgreSQL 16 (folder `./db-data`).
 
 ## Installation
 
@@ -108,8 +108,8 @@ are needed to read the LDAP password and the backups). Step-by-step guides, upgr
 `README-OFFLINE.md` inside each package.
 
 ### 3. Upgrade
-Build a new package, unzip it next to the installed one, copy `.env` and `certs/` over and run `install.sh --upgrade` (or
-`install.ps1 -Upgrade`). Data stays in the Docker volumes (`db-data`, `backups`); the application creates new tables by itself
+Build a new package, unzip it next to the installed one, copy `.env`, `certs/`, **`db-data/` and `backups/`** over (`cp -a`, with the services stopped) and run `install.sh --upgrade` (or
+`install.ps1 -Upgrade`). Data lives in the `db-data/` (PostgreSQL) and `backups/` folders next to `docker-compose.yml` (bind mounts; before 1.11.1 they were Docker volumes, which the installer copies over once); the installer refuses an upgrade that finds no data. The application creates new tables by itself
 at start-up. Take a backup first (Admin > Backup). To roll back, run the upgrade from the previous package folder.
 
 ## HTTPS with a Microsoft PKI certificate
@@ -182,7 +182,7 @@ into the next open payroll period and is labelled "Late claim". Employees are no
 ## Operations
 - Backup: **Admin › Backup** sets the schedule (daily or weekly, UTC) and creates, downloads, uploads and restores
   backups. They are **encrypted** (AES-256-GCM) with `BACKUP_PASSPHRASE`, or a key derived from `SECRET_KEY`, and kept in the
-  `backups` volume. Store the passphrase safely and copy the files off the host. `scripts/backup-db.sh` (native
+  `./backups` folder. Store the passphrase safely and copy the files off the host. `scripts/backup-db.sh` (native
   `pg_dump`, not encrypted) still works for cron.
 - Logs: `docker compose logs -f app proxy`.
 - Health: `GET /healthz`.

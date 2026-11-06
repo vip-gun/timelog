@@ -42,6 +42,7 @@ certs/*
 *.sql.gz
 *.dump
 backups/
+db-data/
 
 # --- Code analysis (SonarQube lives in ../sonar; these are its by-products here) ---
 .scannerwork/

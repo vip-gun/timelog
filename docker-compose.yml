@@ -12,7 +12,8 @@ services:
       POSTGRES_USER: timelog
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
     volumes:
-      - db-data:/var/lib/postgresql/data
+      # Bind mount (folder next to this file); created by the installer, see README "Data folders".
+      - ./db-data:/var/lib/postgresql/data:z
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U timelog -d timelog"]
       interval: 10s
@@ -38,7 +39,7 @@ services:
       BACKUP_DIR: /backups
     volumes:
       # Backups made from Admin > Backup (also copy them off this host).
-      - backups:/backups
+      - ./backups:/backups:z
       # Microsoft PKI CA chain used to validate the LDAPS certificate of the domain controllers.
       - ./certs:/certs:ro,z
     depends_on:
@@ -62,10 +63,6 @@ services:
       app:
         condition: service_healthy
     networks: [internal]
-
-volumes:
-  db-data:
-  backups:
 
 networks:
   internal:

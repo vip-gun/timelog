@@ -88,6 +88,24 @@ if [ ! -f certs/server.crt ] || [ ! -f certs/server.key ]; then
     -m timelog.certtool selfsigned "$SERVER_NAME" /out
 fi
 
+# 4b. data folders (bind mounts). Versions before 1.11.1 used Docker named volumes: copy their content once.
+migrate_volume() {  # <volume> <folder> <image>
+  docker volume inspect "$1" >/dev/null 2>&1 || return 0
+  [ -z "$(ls -A "$2" 2>/dev/null)" ] || return 0
+  say "Copying the data of the Docker volume $1 to ./$2 (the services are stopped meanwhile)"
+  docker compose stop >/dev/null 2>&1 || true
+  docker run --rm -v "$1:/from:ro" -v "$PWD/$2:/to:z" --entrypoint sh "$3" -c 'cp -a /from/. /to/'
+}
+mkdir -p db-data backups
+migrate_volume timelog_db-data db-data "postgres:16-alpine"
+migrate_volume timelog_backups backups "timelog-app:$VERSION"
+# PostgreSQL fixes the ownership of db-data itself; the application (uid 10001) must be able to write backups
+chown 10001:10001 backups 2>/dev/null || chmod 777 backups
+
+if [ "$UPGRADE" = 1 ] && [ -z "$(ls -A db-data)" ]; then
+  die "--upgrade found no data in ./db-data. Copy db-data/ and backups/ from the previous installation folder (cp -a), or run the upgrade inside that folder"
+fi
+
 # 5. firewall (RHEL: firewalld)
 HP=$(sed -n 's/^HTTPS_PORT=//p' .env); HP=${HP:-443}
 LP=$(sed -n 's/^HTTP_PORT=//p' .env); LP=${LP:-80}

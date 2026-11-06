@@ -37,7 +37,7 @@ Then, in this order:
 ## Upgrade to a newer package
 1. Take a backup (Admin > Backup) and download it.
 2. Expand the new package next to the installed one, copy `.env` and the `certs` folder into it, then run
-   `powershell -ExecutionPolicy Bypass -File .\install.ps1 -Upgrade`. Data stays in the Docker volumes.
+   `powershell -ExecutionPolicy Bypass -File .\install.ps1 -Upgrade`. Data stays in the `db-data\` and `backups\` folders (copy them to the new folder if you unzip the package elsewhere).
 3. Check the version in the page footer or at `https://<server>/healthz`.
 
 ## Daily operation
