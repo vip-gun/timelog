@@ -93,22 +93,8 @@ if (-not ((Test-Path certs\server.crt) -and (Test-Path certs\server.key))) {
   Run-Docker run --rm --user 0:0 -v "$PWD\certs:/out" --entrypoint python "timelog-app:$Version" -m timelog.certtool selfsigned $ServerName /out
 }
 
-# 4b. data folders (bind mounts). Versions before 1.11.1 used Docker named volumes: copy their content once.
-function Move-Volume([string]$volume, [string]$folder, [string]$image) {
-  & docker volume inspect $volume *> $null
-  if ($LASTEXITCODE -ne 0) { return }
-  if (Get-ChildItem $folder -Force -ErrorAction SilentlyContinue) { return }
-  Say "Copying the data of the Docker volume $volume to .\$folder (the services are stopped meanwhile)"
-  & docker compose stop *> $null
-  Run-Docker run --rm -v "${volume}:/from:ro" -v "$PWD\${folder}:/to" --entrypoint sh $image -c 'cp -a /from/. /to/'
-}
+# 4b. data folders (bind mounts next to docker-compose.yml)
 New-Item -ItemType Directory -Force -Path db-data, backups | Out-Null
-Move-Volume timelog_db-data db-data "postgres:16-alpine"
-Move-Volume timelog_backups backups "timelog-app:$Version"
-
-if ($Upgrade -and -not (Get-ChildItem db-data -Force -ErrorAction SilentlyContinue)) {
-  Die "-Upgrade found no data in .\db-data. Copy db-data\ and backups\ from the previous installation folder, or run the upgrade inside that folder"
-}
 
 # 5. firewall
 $hp = Get-Env HTTPS_PORT; if (-not $hp) { $hp = "443" }

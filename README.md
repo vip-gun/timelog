@@ -108,9 +108,11 @@ are needed to read the LDAP password and the backups). Step-by-step guides, upgr
 `README-OFFLINE.md` inside each package.
 
 ### 3. Upgrade
-Build a new package, unzip it next to the installed one, copy `.env`, `certs/`, **`db-data/` and `backups/`** over (`cp -a`, with the services stopped) and run `install.sh --upgrade` (or
-`install.ps1 -Upgrade`). Data lives in the `db-data/` (PostgreSQL) and `backups/` folders next to `docker-compose.yml` (bind mounts; before 1.11.1 they were Docker volumes, which the installer copies over once); the installer refuses an upgrade that finds no data. The application creates new tables by itself
-at start-up. Take a backup first (Admin > Backup). To roll back, run the upgrade from the previous package folder.
+Build a new package, unzip it anywhere and run `sudo ./install.sh` again (RHEL; `install.ps1 -Upgrade` on Windows). The RHEL
+installer puts the program in `/opt/timelog` (`--dir` to change it) and finds an existing installation by its `.env`: `.env`,
+`certs/`, `db-data/` (PostgreSQL) and `backups/` stay in that directory and are kept, only the program files and images change.
+The application creates new tables by itself at start-up. Take a backup first (Admin > Backup). To roll back, run the installer
+from the previous package.
 
 ## HTTPS with a Microsoft PKI certificate
 If the PKI gives you a **PFX** file, in an offline package use `convert-pfx.sh` / `convert-pfx.ps1` (it runs inside the application

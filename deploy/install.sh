@@ -1,20 +1,24 @@
 #!/usr/bin/env sh
 # Install or upgrade Timelog from the offline package on a Linux server (RHEL 9). Run inside the unzipped folder.
+# The application is installed in a fixed directory (default /opt/timelog) that holds .env, certs/, db-data/ and backups/.
+# The unzipped package can be deleted afterwards. An upgrade is the same command from the newer package: the directory is
+# detected (it contains .env), configuration, certificates and data are kept, only the program files and images change.
 #
 #   sudo ./install.sh --server-name timelog.corp.example.lu --install-docker --open-firewall   # first installation
-#   ./install.sh --upgrade                                                                      # move to this package version
+#   sudo ./install.sh                                                                           # upgrade
 #
 # Options:
+#   --dir PATH           installation directory (default /opt/timelog)
 #   --server-name FQDN   name in the TLS certificate (required for a first installation)
 #   --http-port N / --https-port N   non-standard published ports
 #   --install-docker     install Docker Engine from docker-rpms/ when it is missing (needs root)
 #   --open-firewall      open the HTTP/HTTPS ports in firewalld (needs root)
-#   --upgrade            keep .env, certificates and data; load the new images and restart
+#   --upgrade            optional: refuse to run unless an installation is found in --dir
 #   --no-start           prepare only
 set -eu
 cd "$(dirname "$0")"
 
-SERVER_NAME=""; HTTP_PORT=""; HTTPS_PORT=""; UPGRADE=0; START=1; INSTALL_DOCKER=0; OPEN_FW=0
+DIR="/opt/timelog"; SERVER_NAME=""; HTTP_PORT=""; HTTPS_PORT=""; UPGRADE=0; START=1; INSTALL_DOCKER=0; OPEN_FW=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --server-name) SERVER_NAME="${2:?}"; shift 2 ;;
@@ -22,9 +26,10 @@ while [ $# -gt 0 ]; do
     --https-port) HTTPS_PORT="${2:?}"; shift 2 ;;
     --install-docker) INSTALL_DOCKER=1; shift ;;
     --open-firewall) OPEN_FW=1; shift ;;
+    --dir) DIR="${2:?}"; shift 2 ;;
     --upgrade) UPGRADE=1; shift ;;
     --no-start) START=0; shift ;;
-    -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
     *) echo "Unknown option $1" >&2; exit 2 ;;
   esac
 done
@@ -54,6 +59,28 @@ else echo "   (no sha256sum/shasum available: skipped)"; fi
 say "Loading the container images (a few minutes)"
 docker load -i images/timelog-images.tar.gz
 
+# 2b. program files go to the installation directory; .env, certs/, db-data/ and backups/ there are never overwritten
+case "$DIR" in /*) ;; *) die "--dir must be an absolute path" ;; esac
+if [ -f "$DIR/.env" ]; then
+  say "Existing installation found in $DIR: upgrading to $VERSION (configuration, certificates and data are kept)"
+  UPGRADE=1
+else
+  [ "$UPGRADE" = 0 ] || die "--upgrade: no installation found in $DIR (no .env)"
+  [ -z "$(ls -A "$DIR/db-data" 2>/dev/null)" ] || die "$DIR/db-data already holds data but there is no $DIR/.env: restore .env (POSTGRES_PASSWORD, SECRET_KEY) first"
+  say "New installation in $DIR"
+fi
+mkdir -p "$DIR/proxy" "$DIR/certs" "$DIR/docs" "$DIR/scripts" "$DIR/db-data" "$DIR/backups"
+if [ "$(cd "$DIR" && pwd -P)" != "$(pwd -P)" ]; then   # not when run from the installation directory itself
+  cp docker-compose.yml .env.example VERSION MANIFEST.txt README-OFFLINE.md convert-pfx.sh install.sh "$DIR/"
+  cp proxy/nginx.conf.template "$DIR/proxy/"
+  cp docs/* "$DIR/docs/"
+  cp scripts/* "$DIR/scripts/" 2>/dev/null || true
+  [ -f "$DIR/certs/README.md" ] || cp certs/README.md "$DIR/certs/"
+fi
+# PostgreSQL fixes the ownership of db-data itself; the application (uid 10001) must be able to write backups
+chown 10001:10001 "$DIR/backups" 2>/dev/null || chmod 777 "$DIR/backups"
+cd "$DIR"
+
 # 3. configuration
 setenv() {  # setenv KEY VALUE : replace or append KEY=VALUE in .env
   if grep -q "^$1=" .env; then sed "s|^$1=.*|$1=$2|" .env > .env.tmp && mv .env.tmp .env; else echo "$1=$2" >> .env; fi
@@ -73,8 +100,6 @@ if [ ! -f .env ]; then
   setenv BACKUP_PASSPHRASE "$(rand 40)"
   [ -z "$HTTP_PORT" ] || setenv HTTP_PORT "$HTTP_PORT"
   if [ -n "$HTTPS_PORT" ]; then setenv HTTPS_PORT "$HTTPS_PORT"; [ "$HTTPS_PORT" = 443 ] || setenv HTTPS_PORT_SUFFIX ":$HTTPS_PORT"; fi
-elif [ "$UPGRADE" = 0 ]; then
-  say ".env already exists: kept (use --upgrade to move an existing installation to this version)"
 fi
 setenv TIMELOG_VERSION "$VERSION"
 chmod 600 .env   # setenv rewrites the file
@@ -86,24 +111,6 @@ if [ ! -f certs/server.crt ] || [ ! -f certs/server.key ]; then
   say "No certificate found: creating a SELF-SIGNED one for $SERVER_NAME (replace it with the PKI certificate, see README-OFFLINE.md)"
   docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/certs:/out:z" --entrypoint python "timelog-app:$VERSION" \
     -m timelog.certtool selfsigned "$SERVER_NAME" /out
-fi
-
-# 4b. data folders (bind mounts). Versions before 1.11.1 used Docker named volumes: copy their content once.
-migrate_volume() {  # <volume> <folder> <image>
-  docker volume inspect "$1" >/dev/null 2>&1 || return 0
-  [ -z "$(ls -A "$2" 2>/dev/null)" ] || return 0
-  say "Copying the data of the Docker volume $1 to ./$2 (the services are stopped meanwhile)"
-  docker compose stop >/dev/null 2>&1 || true
-  docker run --rm -v "$1:/from:ro" -v "$PWD/$2:/to:z" --entrypoint sh "$3" -c 'cp -a /from/. /to/'
-}
-mkdir -p db-data backups
-migrate_volume timelog_db-data db-data "postgres:16-alpine"
-migrate_volume timelog_backups backups "timelog-app:$VERSION"
-# PostgreSQL fixes the ownership of db-data itself; the application (uid 10001) must be able to write backups
-chown 10001:10001 backups 2>/dev/null || chmod 777 backups
-
-if [ "$UPGRADE" = 1 ] && [ -z "$(ls -A db-data)" ]; then
-  die "--upgrade found no data in ./db-data. Copy db-data/ and backups/ from the previous installation folder (cp -a), or run the upgrade inside that folder"
 fi
 
 # 5. firewall (RHEL: firewalld)

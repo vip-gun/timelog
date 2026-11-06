@@ -448,7 +448,13 @@ The JS (`static/app.js`) has no automated tests; static assets are excluded from
   `deploy/README-OFFLINE-<target>.md`), `MANIFEST.txt`, `CHECKSUMS.sha256` (verified by the installer). RHEL: `docker-rpms/` (docker-ce,
   cli, containerd.io, compose and buildx plugins + missing dependencies, resolved in an `almalinux:9` container from Docker's RHEL
   repo; `INCLUDE_DOCKER_RPMS=0` to skip). Windows: Docker is a documented prerequisite (not bundled).
-- **Data folders** (since 1.11.1): `docker-compose.yml` bind-mounts `./db-data` (PostgreSQL) and `./backups` (both `:z`) instead of named volumes. The installers create them, copy the legacy named volumes (`timelog_db-data`, `timelog_backups`) once when the folder is empty (services stopped first), and **refuse `--upgrade` when `db-data` is empty** (a package unzipped elsewhere must get `db-data/` and `backups/` copied over). Windows bind mounts of the PostgreSQL data dir are untested.
+- **Install directory and data folders** (since 1.11.3): `deploy/install.sh` (RHEL) deploys the program files into a fixed directory
+  (`--dir`, default `/opt/timelog`) and runs everything from there; the unzipped package is disposable. `docker-compose.yml` bind-mounts
+  `./db-data` (PostgreSQL) and `./backups` (both `:z`). The directory holds `.env`, `certs/`, `db-data/`, `backups/`, which the installer never
+  overwrites. **An existing `.env` in the directory means upgrade** (no `--server-name` needed; `--upgrade` only asserts it); a directory with
+  `db-data` content but no `.env` is refused. `backups/` is chowned to uid 10001 (app user); PostgreSQL fixes `db-data` itself. No migration
+  from the old named volumes (fresh installs only). `install.ps1` (Windows, unchanged model: runs in the unzipped folder) only creates the
+  folders; Windows bind mounts of the PostgreSQL data dir are untested.
 - `deploy/install.sh` (RHEL) / `deploy/install.ps1` (Windows): verify checksums, `docker load`, create `.env` from the template with
   **generated** `SECRET_KEY`, `POSTGRES_PASSWORD`, bootstrap admin password and `BACKUP_PASSPHRASE` (first install needs
   `--server-name`; `.env` mode 600 / ACL Administrators+SYSTEM), temporary self-signed certificate if none, firewall
@@ -469,10 +475,10 @@ The JS (`static/app.js`) has no automated tests; static assets are excluded from
 
 ## 9. Current state
 
-- Version **1.11.2** (LDAP connections no longer follow AD referrals, `auto_referrals=False`, which broke user lookups from a domain-root search base; 1.11.1: data in bind-mounted `db-data/` and `backups/` folders instead of Docker volumes; 1.11.0: prepare LDAP users in advance; on top of 1.10.0: teams panel, bulk user edit, cut-off calendar, payroll-check block). 126 pytest tests pass on SQLite; the backup and restore tests also pass on PostgreSQL 16. SonarQube (0 issues,
+- Version **1.11.3** (RHEL installer deploys to `/opt/timelog` and upgrades in place; 1.11.2: LDAP connections no longer follow AD referrals, `auto_referrals=False`, which broke user lookups from a domain-root search base; 1.11.1: data in bind-mounted `db-data/` and `backups/` folders instead of Docker volumes; 1.11.0: prepare LDAP users in advance; on top of 1.10.0: teams panel, bulk user edit, cut-off calendar, payroll-check block). 126 pytest tests pass on SQLite; the backup and restore tests also pass on PostgreSQL 16. SonarQube (0 issues,
   0 hotspots, gate passed) and Dependency-Track (0 findings) re-run clean on this version.
-- Latest offline package: `dist/timelog-1.11.2-offline-rhel9-amd64.zip` (+ `.sha256`, **without** the Docker RPMs: `INCLUDE_DOCKER_RPMS=0`), built from the 1.11.2 sources after
-  the tests passed (SonarQube / Dependency-Track last run on 1.11.0; 1.11.2 changes one line of `ldap_auth.py`). Older packages in `dist/` (1.3.1, 1.4.0, 1.7.0, 1.9.0, 1.10.0, 1.11.0, 1.11.1) are obsolete.
+- Latest offline package: `dist/timelog-1.11.3-offline-rhel9-amd64.zip` (+ `.sha256`, **without** the Docker RPMs: `INCLUDE_DOCKER_RPMS=0`), built from the 1.11.3 sources after
+  the tests passed (SonarQube / Dependency-Track last run on 1.11.0; 1.11.2 changes one line of `ldap_auth.py`). Older packages in `dist/` (1.3.1, 1.4.0, 1.7.0, 1.9.0, 1.10.0, 1.11.0, 1.11.1, 1.11.2) are obsolete.
 - The local Docker instance holds no demo users: only `admin` and `tuser` (admin). Demo data for screenshots lives in a throwaway
   SQLite database, never in the local stack.
 - **Verified**: image build; the full stack (nginx HTTPS + app + PostgreSQL 16, all healthy); HTTP→HTTPS redirect; every page for
