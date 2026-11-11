@@ -218,7 +218,7 @@ def test_admin_menu_order(browser, users):
     html = browser("admin").get("/admin/settings").text
     menu = html.split('<nav class="subnav">')[1].split("</nav>")[0]
     labels = [t.strip().replace("&amp;", "&") for t in __import__("re").findall(r"<a[^>]*>([^<]+)</a>", menu)]
-    assert labels == ["Documentation", "Settings", "Users", "Teams", "Grades & on-call rates", "Legal holidays", "TIL factors", "Backup", "Audit log"]
+    assert labels == ["Documentation", "Settings", "Users", "Teams", "Submissions", "Grades & on-call rates", "Legal holidays", "TIL factors", "Backup", "Audit log"]
 
 
 def test_skip_level_approval(browser, db, users):

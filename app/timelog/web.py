@@ -60,6 +60,7 @@ def render(request: Request, name: str, ctx: Optional[dict] = None, status_code:
         csrf=csrf_token(request),
         payroll_cutoff=getattr(request.state, "payroll_cutoff", get_settings().payroll_cutoff_day),
         notices=getattr(request.state, "notices", []),
+        bell=getattr(request.state, "bell", None),
         flashes=pop_flashes(request),
         settings=get_settings(),
         today=dt.date.today(),

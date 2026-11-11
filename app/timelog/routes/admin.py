@@ -24,7 +24,7 @@ from ..ldap_auth import LdapUnavailable, diagnose, lookup_users, sync_user
 from ..db import get_db, get_engine
 from ..ics_import import MAX_BYTES, IcsError, parse_ics
 from .. import teams as team_utils
-from ..models import APPROVED, DAY_TYPES, SETTING_ONCALL_HANDOVER, SETTING_ONCALL_WEEK_START, SETTING_PAYROLL_CUTOFF, SETTING_SHOW_AMOUNTS, SETTING_SIGNATURE_REQUIRED, SETTING_TIL_ENABLED, AppSetting, AuditLog, Grade, Holiday, Notification, OnCallDay, OvertimeEntry, OvertimeRule, PayrollRun, SavedSignature, Sheet, Signature, Team, User, utcnow
+from ..models import APPROVED, DAY_TYPES, SETTING_ONCALL_HANDOVER, SETTING_ONCALL_WEEK_START, SETTING_PAYROLL_CUTOFF, SETTING_SHOW_AMOUNTS, SETTING_SIGNATURE_REQUIRED, SETTING_TIL_ENABLED, AppSetting, AuditLog, Grade, Holiday, Notification, OnCallDay, OvertimeEntry, OvertimeRule, PayrollRun, PayrollRunItem, SavedSignature, Sheet, Signature, Team, User, utcnow
 from ..security import admin_user, check_password_policy, flash, hash_password, verify_csrf
 from ..web import redirect, render
 from ..workflow import audit
@@ -543,6 +543,66 @@ def delete_user(request: Request, user_id: int, me: User = Depends(admin_user), 
     db.commit()
     flash(request, f"User {name} deleted" + (f"; {reports} direct report(s) now have no manager." if reports else "."), "success")
     return redirect("/admin/users")
+
+
+# ------------------------------------------------------------------ submissions (cleanup)
+SHEET_STATUSES = ("draft", "submitted", "approved", "rejected")
+
+
+@router.get("/sheets")
+def sheets_list(request: Request, user_id: int = 0, status: str = "", kind: str = "", year: int = 0, db: Session = Depends(get_db)):
+    stmt = select(Sheet)
+    if user_id:
+        stmt = stmt.where(Sheet.user_id == user_id)
+    if status in SHEET_STATUSES:
+        stmt = stmt.where(Sheet.status == status)
+    if kind in ("oncall", "overtime"):
+        stmt = stmt.where(Sheet.kind == kind)
+    if year:
+        stmt = stmt.where(Sheet.year == year)
+    rows = list(db.scalars(stmt.order_by(Sheet.year.desc(), Sheet.month.desc(), Sheet.user_id, Sheet.kind, Sheet.seq).limit(500)))
+    years = sorted(set(db.scalars(select(Sheet.year).distinct())), reverse=True)
+    people = sorted(db.scalars(select(User)), key=lambda u: u.sort_key)
+    return render(request, "admin/sheets.html", {
+        "sheets": rows, "people": people, "years": years, "statuses": SHEET_STATUSES,
+        "f_user": user_id, "f_status": status, "f_kind": kind, "f_year": year,
+        "back": f"{request.url.path}{'?' + request.url.query if request.url.query else ''}"})
+
+
+@router.post("/sheets/delete", dependencies=[Depends(verify_csrf)])
+async def sheets_delete(request: Request, me: User = Depends(admin_user), db: Session = Depends(get_db)):
+    """Permanently delete sheets (any status), with their lines, signatures and payroll-run links. For clean-up of
+    test instances: approved/sent sheets are accounting evidence, hence the typed confirmation."""
+    form = await request.form()
+    back = str(form.get("back") or "/admin/sheets")
+    if not back.startswith("/admin/sheets"):
+        back = "/admin/sheets"
+    ids = [int(v) for v in form.getlist("sheet_ids") if str(v).isascii() and str(v).isdigit() and len(str(v)) <= 9]
+    if not ids:
+        flash(request, "Tick at least one submission.", "error")
+        return redirect(back)
+    if str(form.get("confirm", "")).strip() != "DELETE":
+        flash(request, "Type DELETE to confirm.", "error")
+        return redirect(back)
+    sheets = list(db.scalars(select(Sheet).where(Sheet.id.in_(ids))))
+    if not sheets:
+        return redirect(back)
+    found = [s.id for s in sheets]
+    summary = [f"{s.user.username} {s.kind} {s.year}-{s.month:02d}#{s.seq} {s.status}" for s in sheets]
+    run_ids = set(db.scalars(select(PayrollRunItem.run_id).where(PayrollRunItem.sheet_id.in_(found))))
+    db.execute(delete(PayrollRunItem).where(PayrollRunItem.sheet_id.in_(found)))
+    db.execute(delete(Signature).where(Signature.sheet_id.in_(found)))
+    db.execute(delete(OnCallDay).where(OnCallDay.sheet_id.in_(found)))
+    db.execute(delete(OvertimeEntry).where(OvertimeEntry.sheet_id.in_(found)))
+    db.execute(delete(Sheet).where(Sheet.id.in_(found)))
+    # a payroll run left without any sheet no longer records anything: drop it so the period reopens
+    for rid in run_ids:
+        if not db.scalar(select(func.count(PayrollRunItem.id)).where(PayrollRunItem.run_id == rid)):
+            db.execute(delete(PayrollRun).where(PayrollRun.id == rid))
+    audit(db, me, "sheets_delete", "sheet", None, count=len(found), sheets=summary[:50])
+    db.commit()
+    flash(request, f"{len(found)} submission(s) deleted.", "success")
+    return redirect(back)
 
 
 def _archive_blocker(db: Session, me: User, user: User) -> Optional[str]:

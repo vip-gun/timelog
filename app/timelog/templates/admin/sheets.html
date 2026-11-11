@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Submissions{% endblock %}
+{% block content %}
+{% include "admin/_nav.html" %}
+<h1>Submissions</h1>
+<p class="help">Every on-call and overtime sheet. Deleting is permanent and meant for cleaning up test instances; it also removes the sheet's lines, signatures and its link to a payroll run.</p>
+<form method="get" class="inline-form">
+  <label class="sr-only" for="f-user">User</label>
+  <select id="f-user" name="user_id" data-autosubmit>
+    <option value="">All users</option>
+    {% for p in people %}<option value="{{ p.id }}" {% if f_user == p.id %}selected{% endif %}>{{ p.full_name }} ({{ p.username }})</option>{% endfor %}
+  </select>
+  <label class="sr-only" for="f-year">Year</label>
+  <select id="f-year" name="year" data-autosubmit>
+    <option value="">All years</option>
+    {% for y in years %}<option value="{{ y }}" {% if f_year == y %}selected{% endif %}>{{ y }}</option>{% endfor %}
+  </select>
+  <label class="sr-only" for="f-kind">Kind</label>
+  <select id="f-kind" name="kind" data-autosubmit>
+    <option value="">On-call and overtime</option>
+    <option value="oncall" {% if f_kind == "oncall" %}selected{% endif %}>On-call</option>
+    <option value="overtime" {% if f_kind == "overtime" %}selected{% endif %}>Overtime</option>
+  </select>
+  <label class="sr-only" for="f-status">Status</label>
+  <select id="f-status" name="status" data-autosubmit>
+    <option value="">All statuses</option>
+    {% for s in statuses %}<option value="{{ s }}" {% if f_status == s %}selected{% endif %}>{{ s|capitalize }}</option>{% endfor %}
+  </select>
+  <button class="btn btn-ghost">Filter</button>
+</form>
+
+<form method="post" action="/admin/sheets/delete" id="sheets-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <input type="hidden" name="back" value="{{ back }}">
+  <div class="table-wrap">
+  <table class="table">
+    <thead><tr><th scope="col"><input type="checkbox" data-select-all="sheet_ids" aria-label="Select all submissions shown"></th><th scope="col">User</th><th scope="col">Kind</th><th scope="col">Month</th><th scope="col">Status</th><th scope="col">Lines</th><th scope="col">Paid with</th><th scope="col">Sent to Finance</th></tr></thead>
+    <tbody>
+    {% for s in sheets %}
+      <tr>
+        <td><input type="checkbox" name="sheet_ids" value="{{ s.id }}" aria-label="Select sheet {{ s.id }}"></td>
+        <td>{{ s.user.full_name }} <span class="muted small">{{ s.user.username }}</span></td>
+        <td>{{ "On-call" if s.kind == "oncall" else "Overtime" }}{% if s.seq > 1 %} <span class="tag">suppl. {{ s.seq }}</span>{% endif %}</td>
+        <td>{{ month_label(s.year, s.month) }}</td>
+        <td>{{ s.status|capitalize }}</td>
+        <td>{{ s.oncall_days|length if s.kind == "oncall" else s.overtime_entries|length }}</td>
+        <td>{{ month_label(s.payroll_year, s.payroll_month) if s.payroll_year else "—" }}</td>
+        <td>{{ s.sent_at|datetime if s.sent_at else "—" }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="8" class="muted">No submissions match.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% if sheets|length >= 500 %}<p class="help">Showing the first 500; narrow the filter to see more.</p>{% endif %}
+  {% if sheets %}
+  <div class="card">
+    <p><strong><span class="js-selected-count">0</span> selected.</strong> Deleted sheets cannot be recovered (make a <a href="/admin/backup">backup</a> first if unsure). Approved sheets sent to Finance are included: a payroll run left empty is removed too.</p>
+    <div class="inline-form">
+      <label class="sr-only" for="confirm-delete">Type DELETE to confirm</label>
+      <input id="confirm-delete" name="confirm" autocomplete="off" placeholder="Type DELETE to confirm">
+      <button class="btn btn-danger" data-confirm="Permanently delete the selected submissions?">Delete selected</button>
+    </div>
+  </div>
+  {% endif %}
+</form>
+{% endblock %}

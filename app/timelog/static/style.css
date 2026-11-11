@@ -30,9 +30,9 @@
   --muted: #717D96;
   --border: #E2E0DC;
   --error: #C20000;
-  --burgundy: #A3304F;           /* Admin button: 6.8:1 with white text; its light border (4.5:1) keeps it distinct on the plum header */
-  --burgundy-hover: #B8395B;
-  --burgundy-edge: #E0A3B5;
+  --burgundy: #8B1A1A;           /* Admin button: dark red, 9:1 with white text; its light border keeps it distinct on the plum header */
+  --burgundy-hover: #A32222;
+  --burgundy-edge: #D98A8A;
   --success: #2F7D57;
   --warning: #A86B00;
 
@@ -525,3 +525,33 @@ pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
 .theme-btn::before { content: ""; position: absolute; left: 8px; top: 8px; width: 12px; height: 12px; border-radius: 50%; border: 2px solid currentColor; }
 .theme-btn.is-auto::before { background: linear-gradient(90deg, currentColor 50%, transparent 50%); }
 .theme-btn.is-dark::before { background: currentColor; }
+
+/* Admin forms laid out as a table: label | field | note */
+.form-table { table-layout: fixed; }
+.form-table th[scope=row] { width: 12rem; font-weight: 600; color: var(--heading); }
+.form-table td:nth-child(2) { width: 22rem; }
+.form-table tr.group th { background: var(--surface-2); font-family: var(--font-mono); font-size: .68rem; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); }
+.form-table tbody tr:hover td { background: transparent; }
+.form-table .help { margin: 0; }
+.form-table input:not([type=checkbox]), .form-table select { width: 100%; }
+.form-table label.check { font-weight: 400; }
+@media (max-width: 760px) { .form-table { table-layout: auto; } .form-table th[scope=row], .form-table td:nth-child(2) { width: auto; } }
+
+/* Notification bell (header). <details> works without JS; app.js closes it on outside click / Escape. */
+.bell { position: relative; }
+.bell summary { list-style: none; cursor: pointer; position: relative; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 2px; color: rgba(255,255,255,.85); }
+.bell summary::-webkit-details-marker { display: none; }
+.bell summary:hover, .bell[open] summary { background: rgba(255,255,255,.12); color: #fff; }
+.bell-count { position: absolute; top: 1px; right: 0; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: #C20000; color: #fff; font: 600 .66rem/16px var(--font-mono); text-align: center; border: 1px solid var(--secondary); }
+.bell-panel { position: absolute; right: 0; top: calc(100% + 10px); width: 22rem; max-height: 26rem; overflow-y: auto; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-top: 3px solid var(--primary); box-shadow: 4px 4px 0 rgba(0,0,0,.2); z-index: 60; }
+.bell-title { padding: .6rem .9rem; font: 600 .68rem var(--font-mono); text-transform: uppercase; letter-spacing: .09em; color: var(--muted); background: var(--surface-2); border-bottom: 1px solid var(--row-line); }
+.bell-item { display: flex; gap: .6rem; align-items: flex-start; padding: .65rem .9rem; border-bottom: 1px solid var(--row-line); font-size: .88rem; }
+.bell-item:last-child { border-bottom: none; }
+.bell-kind { flex: none; font: 600 .62rem var(--font-mono); text-transform: uppercase; letter-spacing: .06em; padding: .15rem .4rem; border: 1px solid var(--border); color: var(--muted); }
+.bell-item.is-alert .bell-kind { color: var(--error); border-color: var(--error); }
+.bell-item.is-request .bell-kind { color: var(--accent-text); border-color: var(--accent-text); }
+.bell-text { flex: 1; overflow-wrap: anywhere; }
+.bell-item button.link { color: var(--muted); padding: 0 .3rem; }
+.bell-item button.link:hover { color: var(--text); background: var(--surface-2); }
+.bell-empty { padding: 1rem .9rem; color: var(--muted); font-size: .88rem; }
+@media (max-width: 760px) { .bell-panel { position: fixed; left: .5rem; right: .5rem; width: auto; top: 64px; } }

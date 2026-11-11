@@ -41,6 +41,28 @@
   </nav>
   {% if user.is_admin %}<a class="admin-link {{ 'active' if path.startswith('/admin') }}" href="/admin/users">Admin</a>{% endif %}
   <div class="who">
+    {% if bell is not none %}
+    <details class="bell">
+      <summary title="Notifications"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a6 6 0 0 0-6 6v4l-2 3h16l-2-3V9a6 6 0 0 0-6-6zm-2 15a2 2 0 0 0 4 0z" fill="currentColor"/></svg>{% if bell.count %}<span class="bell-count">{{ bell.count if bell.count < 100 else "99+" }}</span>{% endif %}<span class="sr-only">Notifications{% if bell.count %}: {{ bell.count }} need attention{% endif %}</span></summary>
+      <div class="bell-panel">
+        <div class="bell-title">Notifications</div>
+        {% for i in bell.items %}
+        <div class="bell-item is-{{ i.kind }}">
+          <span class="bell-kind">{{ {"alert": "Alert", "request": "Request", "change": "Update"}[i.kind] }}</span>
+          <span class="bell-text">{% if i.url %}<a href="{{ i.url }}">{{ i.text }}</a>{% else %}{{ i.text }}{% endif %}{% if i.when %} <span class="muted small">{{ i.when|date }}</span>{% endif %}</span>
+          {% if i.notice_id %}
+          <form method="post" action="/notices/{{ i.notice_id }}/read" class="inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="back" value="{{ request.url.path }}">
+            <button class="link" title="Dismiss">&times;<span class="sr-only">Dismiss</span></button>
+          </form>
+          {% endif %}
+        </div>
+        {% else %}
+        <div class="bell-empty">Nothing new.</div>
+        {% endfor %}
+      </div>
+    </details>
+    {% endif %}
     <span class="name">{{ user.full_name }}{% if user.is_expert %} <span class="tag">Expert</span>{% endif %}{% if user.is_admin %} <span class="tag">Admin</span>{% endif %}</span>
     {% set theme = user.theme or "auto" %}
     {% set next_theme = {"auto": "dark", "dark": "light", "light": ""}[theme] %}

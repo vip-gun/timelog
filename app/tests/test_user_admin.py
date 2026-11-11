@@ -83,3 +83,58 @@ def test_edit_form_offers_archive_and_delete(browser, users):
     assert html.lstrip().startswith("<!doctype html>")
     assert f"/admin/users/{users['carol'].id}/archive" in html and f"/admin/users/{users['carol'].id}/delete" in html
     assert html.index("</form>") < html.index("Archive or delete")
+
+
+def test_admin_deletes_submissions(browser, db, users):
+    from timelog.models import OnCallDay
+    admin = browser("admin")
+    sheet = workflow.get_or_create_sheet(db, users["carol"], "oncall", 2026, 9)
+    workflow.save_oncall(db, sheet, [workflow.OnCallInput(dt.date(2026, 9, 4))])
+    sheet.status = "approved"
+    db.commit()
+    sid = sheet.id
+    page = admin.get("/admin/sheets").text
+    assert f'value="{sid}"' in page
+    assert browser("alice").get("/admin/sheets").status_code in (403, 404)
+    admin.post("/admin/sheets/delete", {"sheet_ids": str(sid), "confirm": "nope"})
+    db.expire_all()
+    assert db.get(Sheet, sid) is not None
+    assert admin.post("/admin/sheets/delete", {"sheet_ids": str(sid), "confirm": "DELETE"}).status_code == 303
+    db.expire_all()
+    assert db.get(Sheet, sid) is None
+    assert db.scalar(select(OnCallDay).where(OnCallDay.sheet_id == sid)) is None
+    assert any(a.action == "sheets_delete" for a in db.scalars(select(AuditLog)))
+
+
+def test_submissions_filters_and_delete_edge_cases(browser, db, users):
+    admin = browser("admin")
+    s1 = workflow.get_or_create_sheet(db, users["carol"], "oncall", 2026, 9)
+    s2 = workflow.get_or_create_sheet(db, users["alice"], "overtime", 2025, 3)
+    db.commit()
+    both = admin.get("/admin/sheets").text
+    assert f'name="sheet_ids" value="{s1.id}"' in both and f'name="sheet_ids" value="{s2.id}"' in both
+    page = admin.get(f"/admin/sheets?user_id={users['carol'].id}&status=draft&kind=oncall&year=2026").text
+    assert f'name="sheet_ids" value="{s1.id}"' in page and f'name="sheet_ids" value="{s2.id}"' not in page
+    assert "No submissions match" in admin.get("/admin/sheets?status=approved").text
+    # nothing ticked, unknown id and a foreign redirect target are all harmless
+    assert admin.post("/admin/sheets/delete", {"confirm": "DELETE"}).status_code == 303
+    assert admin.post("/admin/sheets/delete", {"sheet_ids": ["²", "9" * 30], "confirm": "DELETE"}).status_code == 303
+    r = admin.post("/admin/sheets/delete", {"sheet_ids": "999999", "confirm": "DELETE", "back": "https://evil.example"})
+    assert r.status_code == 303 and r.headers["location"].startswith("/admin/sheets")
+    db.expire_all()
+    assert db.get(Sheet, s1.id) is not None and db.get(Sheet, s2.id) is not None
+
+
+def test_notification_bell(browser, db, users):
+    alice, mgr = browser("alice"), browser("manager")
+    assert 'class="bell"' in alice.get("/").text and "Nothing new" in alice.get("/").text
+    sheet = workflow.get_or_create_sheet(db, users["alice"], "oncall", 2026, 9)
+    workflow.save_oncall(db, sheet, [workflow.OnCallInput(dt.date(2026, 9, 4))])
+    sheet.status, sheet.submitted_at = "submitted", dt.datetime.utcnow()
+    db.commit()
+    page = mgr.get("/").text
+    assert "waiting for your approval" in page and 'class="bell-count">1<' in page
+    sheet.status, sheet.decision_comment, sheet.decided_at = "rejected", "fix day", dt.datetime.utcnow()
+    db.commit()
+    page = alice.get("/").text
+    assert "was rejected: fix day" in page and 'class="bell-count">1<' in page

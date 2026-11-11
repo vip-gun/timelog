@@ -25,6 +25,14 @@
     count();
   });
 
+  // Notification bell: close on outside click or Escape
+  document.addEventListener("click", function (ev) {
+    document.querySelectorAll("details.bell[open]").forEach(function (d) { if (!d.contains(ev.target)) d.removeAttribute("open"); });
+  });
+  document.addEventListener("keydown", function (ev) {
+    if (ev.key === "Escape") document.querySelectorAll("details.bell[open]").forEach(function (d) { d.removeAttribute("open"); });
+  });
+
   // Auto-submit selects: <select data-autosubmit>
   document.querySelectorAll("select[data-autosubmit]").forEach(function (sel) {
     sel.addEventListener("change", function () { sel.form.submit(); });
