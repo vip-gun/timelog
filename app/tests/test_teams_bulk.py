@@ -130,3 +130,36 @@ def test_reviewer_sees_preapproved_entries(browser, db, users):
     assert 'tag tag-preapproved' in page and "preapproved-note" not in page          # Context column tag only, no banner
     assert "1 pre-approved" in mgr.get("/approvals").text
     assert 'class="avatar"' not in page
+
+
+def test_bulk_management_and_ldap_reload(browser, db, users, monkeypatch):
+    from timelog.ldap_auth import LdapProfile, LdapUnavailable
+    from timelog.routes import admin as admin_routes
+    admin = _admin(browser)
+    alice, carol, bob = users["alice"], users["carol"], users["bob"]   # bob is an Expert
+    r = admin.post("/admin/users/bulk", {"user_ids": [str(alice.id), str(bob.id)], "is_management": "1"})
+    db.expire_all()
+    assert db.get(User, alice.id).is_management is True
+    assert db.get(User, bob.id).is_management is False        # Expert cannot be Management: skipped
+    admin.post("/admin/users/bulk", {"user_ids": [str(alice.id)], "is_management": "0"})
+    db.expire_all()
+    assert db.get(User, alice.id).is_management is False
+
+    # reload from the directory: locks are cleared and directory values win; local accounts are skipped
+    u = db.get(User, carol.id)
+    u.auth_source, u.ldap_dn, u.team, u.team_locked, u.manager_locked = "ldap", "cn=carol", "Manual", True, True
+    db.commit()
+    monkeypatch.setattr(admin_routes, "lookup_users", lambda s, names: {
+        "carol": (LdapProfile(dn="cn=carol", username="carol", team="FromAD", email="c@example.test"), "")})
+    admin.post("/admin/users/bulk", {"user_ids": [str(carol.id), str(alice.id)], "reload_ldap": "1"})
+    db.expire_all()
+    u = db.get(User, carol.id)
+    assert (u.team, u.email, u.team_locked, u.manager_locked) == ("FromAD", "c@example.test", False, False)
+    assert db.get(User, alice.id).auth_source == "local"
+
+    def boom(s, names):
+        raise LdapUnavailable("down")
+    monkeypatch.setattr(admin_routes, "lookup_users", boom)
+    admin.post("/admin/users/bulk", {"user_ids": [str(carol.id)], "reload_ldap": "1"})
+    db.expire_all()
+    assert db.get(User, carol.id).team == "FromAD"

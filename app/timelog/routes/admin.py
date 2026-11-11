@@ -245,6 +245,8 @@ def save_user(
         user.is_admin, user.is_active = bool(is_admin), bool(is_active) and not user.is_archived
         user.is_procurement = bool(is_procurement)
         user.is_management = bool(is_management)
+        if user.is_management and user.is_expert:
+            raise ValueError("An Expert cannot also be Management.")
         new_manager = int(manager_id) if manager_id else None
         if new_manager is not None and user.id is not None:
             if new_manager == user.id or new_manager in subordinate_ids(db, user):
@@ -291,8 +293,10 @@ async def bulk_users(request: Request, me: User = Depends(admin_user), db: Sessi
     manager_raw = str(form.get("manager_id", ""))
     expert_raw = str(form.get("is_expert", ""))
     grade_raw = str(form.get("grade_id", ""))
+    management_raw = str(form.get("is_management", ""))
+    reload_ldap = bool(form.get("reload_ldap"))
     lock = bool(form.get("lock"))
-    if not (team or clear_team or manager_raw or expert_raw or grade_raw):
+    if not (team or clear_team or manager_raw or expert_raw or grade_raw or management_raw or reload_ldap):
         flash(request, "Nothing to change: fill in at least one field.", "error")
         return redirect(back)
 
@@ -307,15 +311,39 @@ async def bulk_users(request: Request, me: User = Depends(admin_user), db: Sessi
         flash(request, "Unknown grade.", "error")
         return redirect(back)
 
-    changed, skipped = 0, []
+    # Reload from the directory: unlock team/manager, then apply the directory values (same code as a sign-in)
+    found: dict = {}
+    if reload_ldap:
+        names = [u.username for u in users_ if u.auth_source == "ldap"]
+        if names:
+            try:
+                found = lookup_users(effective_settings(db, get_settings()), names)
+            except LdapUnavailable as exc:
+                flash(request, f"Directory lookup failed: {exc}", "error")
+                return redirect(back)
+
+    changed, skipped, reloaded = 0, [], 0
     for u in users_:
         try:
+            if reload_ldap:
+                if u.auth_source != "ldap":
+                    raise ValueError("not a directory (LDAP) account, nothing to reload.")
+                profile, reason = found.get(u.username, (None, "not found in the directory."))
+                if profile is None:
+                    raise ValueError(reason or "not found in the directory.")
+                u.team_locked = u.manager_locked = False
+                sync_user(db, profile, login=False)
+                reloaded += 1
+            if management_raw in ("1", "0"):
+                u.is_management = management_raw == "1"
             if team or clear_team:
                 u.team = "" if clear_team else team
                 if u.auth_source == "ldap" and lock:
                     u.team_locked = True
             if expert_raw in ("1", "0"):
                 u.is_expert = expert_raw == "1"
+            if u.is_management and u.is_expert:
+                raise ValueError("an Expert cannot also be Management.")
             conflict = team_utils.expert_conflict(db, u.team, u.is_expert)
             if conflict:
                 raise ValueError(conflict)
@@ -342,10 +370,10 @@ async def bulk_users(request: Request, me: User = Depends(admin_user), db: Sessi
             continue
         db.commit()
     audit(db, me, "users_bulk_update", "user", None, count=changed, skipped=len(skipped), team=team or ("" if not clear_team else "(cleared)"),
-          manager=manager_raw, expert=expert_raw, grade=grade_raw, users=[u.username for u in users_])
+          manager=manager_raw, expert=expert_raw, grade=grade_raw, management=management_raw, reloaded=reloaded, users=[u.username for u in users_])
     db.commit()
     if changed:
-        flash(request, f"{changed} user(s) updated.", "success")
+        flash(request, f"{changed} user(s) updated" + (f", {reloaded} reloaded from the directory." if reloaded else "."), "success")
     for msg in skipped[:5]:
         flash(request, f"Skipped {msg}", "error")
     if len(skipped) > 5:

@@ -45,6 +45,10 @@
         {% for g in grades %}<option value="{{ g.id }}">{{ g.code }} – {{ g.name }}</option>{% endfor %}
       </select>
     </label>
+    <label>Management
+      <select name="is_management"><option value="">— no change —</option><option value="1">Set as Management</option><option value="0">Remove Management</option></select>
+    </label>
+    <label class="check"><input type="checkbox" name="reload_ldap" value="1"> Reload from the directory (LDAP users: unlock team/manager, refresh names, e-mail, team, manager, groups)</label>
     <label class="check"><input type="checkbox" name="lock" value="1" checked> Lock what I change for LDAP users (manager, team) against directory sync</label>
   </div>
   <div class="actions"><button class="btn btn-primary" data-confirm="Apply these changes to the selected users?">Apply to selected</button></div>
