@@ -195,7 +195,6 @@ into the next open payroll period and is labelled "Late claim". Employees are no
 ```bash
 cd app && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
 .venv/bin/pytest -q
-DATABASE_URL=sqlite:///./dev.db SECRET_KEY=$(openssl rand -hex 32) SESSION_COOKIE_SECURE=false \
-  BOOTSTRAP_ADMIN_USERNAME=admin BOOTSTRAP_ADMIN_PASSWORD='<choose-a-local-password>' \
-  .venv/bin/uvicorn --factory timelog.main:create_app --reload
 ```
+Try the application only through the Docker deployment (`scripts/build.sh && docker compose up -d`, then
+`docker compose exec app python -m timelog.demo` for demo users); do not run it outside Docker.

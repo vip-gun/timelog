@@ -405,12 +405,7 @@ cd app && /opt/homebrew/bin/python3.12 -m venv .venv && .venv/bin/pip install -r
 # against PostgreSQL 16 (each test starts from an empty schema)
 TEST_DATABASE_URL=postgresql+psycopg://user:pw@host:5432/db .venv/bin/pytest -q
 
-# run locally without docker
-DATABASE_URL=sqlite:///./dev.db SECRET_KEY=$(openssl rand -hex 32) SESSION_COOKIE_SECURE=false \
-BOOTSTRAP_ADMIN_USERNAME=admin BOOTSTRAP_ADMIN_PASSWORD='<choose-a-local-password>' \
-.venv/bin/uvicorn --factory timelog.main:create_app --reload
-
-# full stack
+# manual testing and review: ONLY the docker deployment (no local uvicorn / dev.db instance)
 scripts/make-selfsigned.sh timelog.local && cp .env.example .env && scripts/build.sh && docker compose up -d
 docker compose exec app python -m timelog.demo   # optional demo users (prints a random password)
 ```
@@ -482,10 +477,10 @@ The JS (`static/app.js`) has no automated tests; static assets are excluded from
 
 ## 9. Current state
 
-- Version **1.16.0** (bulk edit: Management flag and reload from the directory; 1.15.0: Management role, approval only; 1.14.0: guide and documentation shortened, table-style edit-user form, Admin › Submissions cleanup, header notification bell, dark-red Admin button; 1.13.0: cut-off calendar keyed by cut-off month, per-user theme toggle; 1.12.0: automatic dark mode following the OS setting; the Employee ID attribute mapping, field and export column are removed; the unused `users.employee_id` column stays in the schema for existing databases; 1.11.4: LDAP *Test connection* now reports a failed search (result code, message, base, filter) instead of "0 entries"; 1.11.3: RHEL installer deploys to `/opt/timelog` and upgrades in place; 1.11.2: LDAP connections no longer follow AD referrals, `auto_referrals=False`, which broke user lookups from a domain-root search base; 1.11.1: data in bind-mounted `db-data/` and `backups/` folders instead of Docker volumes; 1.11.0: prepare LDAP users in advance; on top of 1.10.0: teams panel, bulk user edit, cut-off calendar, payroll-check block). 134 pytest tests pass on SQLite; the backup and restore tests also pass on PostgreSQL 16. SonarQube (0 issues,
+- Version **1.17.0** (sortable users table, tidier bulk-edit panel; 1.16.0: bulk edit: Management flag and reload from the directory; 1.15.0: Management role, approval only; 1.14.0: guide and documentation shortened, table-style edit-user form, Admin › Submissions cleanup, header notification bell, dark-red Admin button; 1.13.0: cut-off calendar keyed by cut-off month, per-user theme toggle; 1.12.0: automatic dark mode following the OS setting; the Employee ID attribute mapping, field and export column are removed; the unused `users.employee_id` column stays in the schema for existing databases; 1.11.4: LDAP *Test connection* now reports a failed search (result code, message, base, filter) instead of "0 entries"; 1.11.3: RHEL installer deploys to `/opt/timelog` and upgrades in place; 1.11.2: LDAP connections no longer follow AD referrals, `auto_referrals=False`, which broke user lookups from a domain-root search base; 1.11.1: data in bind-mounted `db-data/` and `backups/` folders instead of Docker volumes; 1.11.0: prepare LDAP users in advance; on top of 1.10.0: teams panel, bulk user edit, cut-off calendar, payroll-check block). 135 pytest tests pass on SQLite; the backup and restore tests also pass on PostgreSQL 16. SonarQube (0 issues,
   0 hotspots, gate passed) and Dependency-Track (0 findings) re-run clean on this version.
-- Latest offline package: `dist/timelog-1.16.0-offline-rhel9-amd64.zip` (+ `.sha256`, **without** the Docker RPMs: `INCLUDE_DOCKER_RPMS=0`), built from the 1.16.0 sources after
-  the tests passed (SonarQube / Dependency-Track last run on 1.11.0; 1.11.2 changes one line of `ldap_auth.py`). Older packages in `dist/` (1.15.0, 1.14.0, 1.13.0, 1.3.1, 1.4.0, 1.7.0, 1.9.0, 1.10.0, 1.11.0, 1.11.1, 1.11.2, 1.11.3, 1.11.4, 1.11.5, 1.12.0) are obsolete.
+- Latest offline package: `dist/timelog-1.17.0-offline-rhel9-amd64.zip` (+ `.sha256`, **without** the Docker RPMs: `INCLUDE_DOCKER_RPMS=0`), built from the 1.17.0 sources after
+  the tests passed (SonarQube / Dependency-Track last run on 1.11.0; 1.11.2 changes one line of `ldap_auth.py`). Older packages in `dist/` (1.16.0, 1.15.0, 1.14.0, 1.13.0, 1.3.1, 1.4.0, 1.7.0, 1.9.0, 1.10.0, 1.11.0, 1.11.1, 1.11.2, 1.11.3, 1.11.4, 1.11.5, 1.12.0) are obsolete.
 - The local Docker instance holds no demo users: only `admin` and `tuser` (admin). Demo data for screenshots lives in a throwaway
   SQLite database, never in the local stack.
 - **Verified**: image build; the full stack (nginx HTTPS + app + PostgreSQL 16, all healthy); HTTP→HTTPS redirect; every page for

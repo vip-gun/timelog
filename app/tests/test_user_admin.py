@@ -160,3 +160,17 @@ def test_management_role_approves_only(browser, db, users):
     assert db.scalar(select(Sheet).where(Sheet.user_id == carol.id)) is None
     assert "Approvals" in c.get("/guide").text and 'id="submit"' not in c.get("/guide").text
     assert "Management" in admin.get("/admin/users").text
+
+
+def test_users_table_sorting(browser, users):
+    admin = browser("admin")
+    def order(qs):
+        html = admin.get("/admin/users" + qs).text
+        names = [u for u in ("alice", "bob", "carol", "dave", "manager") if f'href="/admin/users/{users[u].id}"' in html]
+        return sorted(names, key=lambda n: html.index(f'href="/admin/users/{users[n].id}"'))
+    asc, desc = order("?sort=username&dir=asc"), order("?sort=username&dir=desc")
+    assert asc == sorted(asc) and desc == asc[::-1]
+    assert 'aria-sort="descending"' in admin.get("/admin/users?sort=team&dir=desc").text
+    for key in ("name", "team", "manager", "grade", "source", "flags", "login", "bogus"):
+        assert admin.get(f"/admin/users?sort={key}").status_code == 200
+    assert "sort=team" in admin.get("/admin/users?q=a").text

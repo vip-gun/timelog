@@ -44,7 +44,8 @@ def _dec(value: str, field: str) -> Decimal:
 
 # ------------------------------------------------------------------ users
 @router.get("/users")
-def users(request: Request, q: str = "", archived: int = 0, team: str = "", db: Session = Depends(get_db)):
+def users(request: Request, q: str = "", archived: int = 0, team: str = "", sort: str = "name", dir: str = "asc",
+          db: Session = Depends(get_db)):
     stmt = select(User).where(User.is_archived.is_(True) if archived else User.is_archived.is_not(True))
     if team == NO_TEAM:
         stmt = stmt.where(func.trim(User.team) == "")
@@ -54,15 +55,30 @@ def users(request: Request, q: str = "", archived: int = 0, team: str = "", db: 
         like = f"%{q.lower()}%"
         stmt = stmt.where(or_(User.username.ilike(like), User.first_name.ilike(like), User.last_name.ilike(like),
                               User.display_name.ilike(like), User.team.ilike(like)))
-    rows = sorted(db.scalars(stmt), key=lambda u: u.sort_key)
+    sort = sort if sort in USER_SORTS else "name"
+    descending = dir == "desc"
+    rows = sorted(db.scalars(stmt), key=lambda u: u.sort_key)                      # stable base order
+    rows.sort(key=USER_SORTS[sort], reverse=descending)
     n_archived = db.scalar(select(func.count(User.id)).where(User.is_archived.is_(True)))
     return render(request, "admin/users.html", {
-        "users": rows, "q": q, "archived": bool(archived), "n_archived": n_archived, "team": team, "no_team": NO_TEAM,
+        "users": rows, "sort": sort, "dir": "desc" if descending else "asc", "q": q, "archived": bool(archived), "n_archived": n_archived, "team": team, "no_team": NO_TEAM,
         "oncall_off": {t.name.strip().lower() for t in db.scalars(select(Team).where(Team.oncall_enabled.is_(False)))},
         **_bulk_ctx(db)})
 
 
 NO_TEAM = "__none__"
+
+# Sortable columns of the users table (case-insensitive text; empty values and "never" last when ascending)
+USER_SORTS = {
+    "username": lambda u: u.username.lower(),
+    "name": lambda u: u.sort_key,
+    "team": lambda u: (not u.team.strip(), u.team.strip().lower()),
+    "manager": lambda u: (u.manager is None, u.manager.full_name.lower() if u.manager else ""),
+    "grade": lambda u: u.grade.code.lower() if u.grade else "",
+    "source": lambda u: u.auth_source,
+    "flags": lambda u: -(u.is_admin * 8 + u.is_management * 4 + u.is_procurement * 2 + u.is_expert),
+    "login": lambda u: (u.last_login_at is None, u.last_login_at or dt.datetime.min),
+}
 
 
 def _manager_candidates(db: Session) -> List[User]:
