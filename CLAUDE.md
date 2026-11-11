@@ -48,6 +48,7 @@ A weekend day that is also a holiday counts in HL121 only (never HL130).
 
 - **Employee types**: normal and **Expert** (`users.is_expert`). Both can do on-call.
   **Only normal employees can file overtime** (enforced server-side, 403 for experts).
+- **Management role** (`users.is_management`, Admin › Users form, tag "Management"): **approval only**. No on-call, no overtime, no submission: the On-call/Overtime nav items and dashboard tiles are hidden, `/oncall`, `/overtime`, `POST /submit` redirect home with a notice, and `workflow.get_or_create_sheet` refuses (so no sheet can ever exist for them). `teams.oncall_enabled` is false for them. They approve through the normal hierarchy (set them as line manager of the people concerned; skip-level rules unchanged), have Approvals and Statistics, and are excluded from `export.scope_users` (nothing to report). Not mapped to an LDAP group: set by hand. No "no line manager" banner for them. The User Guide shows only the approval parts.
 - **User lifecycle** (Admin › Users, `routes/admin.py`): the **Team** field suggests the existing teams (`<datalist>`, free text still
   allowed for a new team). **Archive** (`users.is_archived`, `POST /admin/users/<id>/archive|unarchive`): disables sign-in
   (`is_active` false), hides the user from the list (an "Archived (N)" view shows them) and from the manager/team suggestions, and keeps
@@ -219,7 +220,7 @@ approved ──reopen (admin only, audited, latest sheet of the month only)─�
 
 ## 4. Security model
 
-- Roles: **employee** (everyone), **manager** (implicit: has direct reports), **IT Procurement** (`is_procurement`: whole-organisation
+- Roles: **employee** (everyone), **Management** (`is_management`: approves only, declares nothing), **manager** (implicit: has direct reports), **IT Procurement** (`is_procurement`: whole-organisation
   payroll reports and the sent-to-Finance record, no access to individual sheets), **admin** (`is_admin`).
 - Visibility (`access.py`, the single place for authz): a user sees their own sheets; a manager sees sheets of **all users below
   them in the hierarchy** (recursive, cycle-safe); admin sees all. **Colleagues never see each other.** Unauthorised access to
@@ -479,10 +480,10 @@ The JS (`static/app.js`) has no automated tests; static assets are excluded from
 
 ## 9. Current state
 
-- Version **1.14.0** (guide and documentation shortened, table-style edit-user form, Admin › Submissions cleanup, header notification bell, dark-red Admin button; 1.13.0: cut-off calendar keyed by cut-off month, per-user theme toggle; 1.12.0: automatic dark mode following the OS setting; the Employee ID attribute mapping, field and export column are removed; the unused `users.employee_id` column stays in the schema for existing databases; 1.11.4: LDAP *Test connection* now reports a failed search (result code, message, base, filter) instead of "0 entries"; 1.11.3: RHEL installer deploys to `/opt/timelog` and upgrades in place; 1.11.2: LDAP connections no longer follow AD referrals, `auto_referrals=False`, which broke user lookups from a domain-root search base; 1.11.1: data in bind-mounted `db-data/` and `backups/` folders instead of Docker volumes; 1.11.0: prepare LDAP users in advance; on top of 1.10.0: teams panel, bulk user edit, cut-off calendar, payroll-check block). 132 pytest tests pass on SQLite; the backup and restore tests also pass on PostgreSQL 16. SonarQube (0 issues,
+- Version **1.15.0** (Management role, approval only; 1.14.0: guide and documentation shortened, table-style edit-user form, Admin › Submissions cleanup, header notification bell, dark-red Admin button; 1.13.0: cut-off calendar keyed by cut-off month, per-user theme toggle; 1.12.0: automatic dark mode following the OS setting; the Employee ID attribute mapping, field and export column are removed; the unused `users.employee_id` column stays in the schema for existing databases; 1.11.4: LDAP *Test connection* now reports a failed search (result code, message, base, filter) instead of "0 entries"; 1.11.3: RHEL installer deploys to `/opt/timelog` and upgrades in place; 1.11.2: LDAP connections no longer follow AD referrals, `auto_referrals=False`, which broke user lookups from a domain-root search base; 1.11.1: data in bind-mounted `db-data/` and `backups/` folders instead of Docker volumes; 1.11.0: prepare LDAP users in advance; on top of 1.10.0: teams panel, bulk user edit, cut-off calendar, payroll-check block). 133 pytest tests pass on SQLite; the backup and restore tests also pass on PostgreSQL 16. SonarQube (0 issues,
   0 hotspots, gate passed) and Dependency-Track (0 findings) re-run clean on this version.
-- Latest offline package: `dist/timelog-1.14.0-offline-rhel9-amd64.zip` (+ `.sha256`, **without** the Docker RPMs: `INCLUDE_DOCKER_RPMS=0`), built from the 1.14.0 sources after
-  the tests passed (SonarQube / Dependency-Track last run on 1.11.0; 1.11.2 changes one line of `ldap_auth.py`). Older packages in `dist/` (1.13.0, 1.3.1, 1.4.0, 1.7.0, 1.9.0, 1.10.0, 1.11.0, 1.11.1, 1.11.2, 1.11.3, 1.11.4, 1.11.5, 1.12.0) are obsolete.
+- Latest offline package: `dist/timelog-1.15.0-offline-rhel9-amd64.zip` (+ `.sha256`, **without** the Docker RPMs: `INCLUDE_DOCKER_RPMS=0`), built from the 1.15.0 sources after
+  the tests passed (SonarQube / Dependency-Track last run on 1.11.0; 1.11.2 changes one line of `ldap_auth.py`). Older packages in `dist/` (1.14.0, 1.13.0, 1.3.1, 1.4.0, 1.7.0, 1.9.0, 1.10.0, 1.11.0, 1.11.1, 1.11.2, 1.11.3, 1.11.4, 1.11.5, 1.12.0) are obsolete.
 - The local Docker instance holds no demo users: only `admin` and `tuser` (admin). Demo data for screenshots lives in a throwaway
   SQLite database, never in the local stack.
 - **Verified**: image build; the full stack (nginx HTTPS + app + PostgreSQL 16, all healthy); HTTP→HTTPS redirect; every page for

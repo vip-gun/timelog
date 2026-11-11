@@ -82,6 +82,8 @@ class User(Base):
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     # IT Procurement: downloads the payroll reports (whole organisation) and records that they were sent to Finance
     is_procurement: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Management: only approves (no on-call, no overtime of their own)
+    is_management: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     # Archived: disabled and hidden from the user list; every record (sheets, payroll, audit) is kept
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)

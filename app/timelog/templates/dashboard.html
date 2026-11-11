@@ -10,17 +10,23 @@
   </div>
   <div class="actions">
     {% if oncall_enabled %}<a class="btn btn-ghost" href="/oncall">Declare on-call</a>{% endif %}
-    {% if not user.is_expert %}<a class="btn btn-primary" href="/overtime">Log overtime</a>{% endif %}
+    {% if not user.is_expert and not user.is_management %}<a class="btn btn-primary" href="/overtime">Log overtime</a>{% endif %}
   </div>
 </div>
 
 {% if pending %}
 <div class="banner banner-info"><a href="/approvals">{{ pending }} sheet{{ 's' if pending > 1 }} waiting for your validation &rarr;</a></div>
 {% endif %}
-{% if not user.manager_id %}
+{% if not user.manager_id and not user.is_management %}
 <div class="banner banner-error">No line manager is configured for your account: you will not be able to submit. Contact an administrator.</div>
 {% endif %}
 
+{% if user.is_management %}
+<section class="card">
+  <h2>Approvals</h2>
+  <p>Your role is approval only: you do not declare on-call or overtime. Open <a href="/approvals">Approvals</a> to validate the sheets of the people below you, or <a href="/team">Statistics</a> for their status.</p>
+</section>
+{% else %}
 <div class="stats stagger">
   {% if show_oncall %}
   <div class="stat accent"><span class="label">On-call days this month</span><span class="value"><span data-count="{{ stats.oncall_days }}">{{ stats.oncall_days }}</span></span></div>
@@ -58,4 +64,5 @@
   Called during on-call duty? Tick "intervention" on the on-call sheet <em>and</em> log the hours as overtime. Forgot something in a past month? You can log overtime up to {{ settings.overtime_lookback_months }} months back; if that month is already approved, a supplementary sheet is created for your manager to validate.
   {% endif %}
 </p>
+{% endif %}
 {% endblock %}

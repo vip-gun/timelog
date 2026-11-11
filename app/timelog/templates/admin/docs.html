@@ -37,6 +37,7 @@
       <tr><th scope="row">Employee</th><td>Declares on-call and overtime, submits, withdraws; sees only their own data.</td></tr>
       <tr><th scope="row">Expert</th><td>On-call only; an intervention doubles the day's rate. Overtime is refused server-side.</td></tr>
       <tr><th scope="row">Line manager</th><td>Anyone with direct reports. Approves/rejects everyone below them (skip-level included) and has the <em>Statistics</em> page. No downloads.</td></tr>
+      <tr><th scope="row">Management</th><td>Approval only: no on-call or overtime of their own (pages, submission and sheets refused server-side). Approves the people below them, so make them the line manager of those people; has Statistics. Set in Users; not part of exports.</td></tr>
       <tr><th scope="row">IT Procurement</th><td>Downloads the whole-organisation payroll reports and records them as sent to Finance. Cannot open individual sheets. Set in Users or by <code>LDAP_GROUP_PROCUREMENT</code>.</td></tr>
       <tr><th scope="row">Administrator</th><td>Manages users, teams, grades, holidays, settings; reads the audit log; approves any sheet; reopens an approved sheet (audited).</td></tr>
     </tbody>

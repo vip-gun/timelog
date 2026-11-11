@@ -31,7 +31,7 @@
   <nav>
     <a href="/" class="{{ 'active' if path == '/' }}">Dashboard</a>
     {% if oncall_enabled %}<a href="/oncall" class="{{ 'active' if path.startswith('/oncall') }}">On-call</a>{% endif %}
-    {% if not user.is_expert %}<a href="/overtime" class="{{ 'active' if path.startswith('/overtime') }}">Overtime</a>{% endif %}
+    {% if not user.is_expert and not user.is_management %}<a href="/overtime" class="{{ 'active' if path.startswith('/overtime') }}">Overtime</a>{% endif %}
     {% if is_manager or user.is_admin %}
       <a href="/approvals" class="{{ 'active' if path.startswith('/approvals') }}">Approvals</a>
       <a href="/team" class="{{ 'active' if path.startswith('/team') }}">Statistics</a>
@@ -63,7 +63,7 @@
       </div>
     </details>
     {% endif %}
-    <span class="name">{{ user.full_name }}{% if user.is_expert %} <span class="tag">Expert</span>{% endif %}{% if user.is_admin %} <span class="tag">Admin</span>{% endif %}</span>
+    <span class="name">{{ user.full_name }}{% if user.is_expert %} <span class="tag">Expert</span>{% endif %}{% if user.is_management %} <span class="tag">Management</span>{% endif %}{% if user.is_admin %} <span class="tag">Admin</span>{% endif %}</span>
     {% set theme = user.theme or "auto" %}
     {% set next_theme = {"auto": "dark", "dark": "light", "light": ""}[theme] %}
     <form method="post" action="/preferences/theme" class="inline">

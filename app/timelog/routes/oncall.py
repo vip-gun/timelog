@@ -38,6 +38,9 @@ def view(request: Request, year: int, month: int, user_id: Optional[int] = None,
     s = get_settings()
     week_start, handover = oncall_week(db, s)
     target = resolve_target(db, me, user_id)
+    if target.is_management:
+        flash(request, teams.MANAGEMENT_MESSAGE, "info")
+        return redirect("/")
     sheet = workflow.get_sheet(db, target, KIND_ONCALL, year, month)
     oncall_off = not teams.oncall_enabled(db, target)
     if oncall_off and sheet is None:
@@ -111,6 +114,9 @@ def view(request: Request, year: int, month: int, user_id: Optional[int] = None,
 async def save(request: Request, year: int, month: int, background: BackgroundTasks,
                me: User = Depends(current_user), db: Session = Depends(get_db)):
     check_month(year, month)
+    if me.is_management:
+        flash(request, teams.MANAGEMENT_MESSAGE, "error")
+        return redirect("/")
     if not teams.oncall_enabled(db, me):
         flash(request, teams.oncall_disabled_message(me), "error")
         return redirect("/")

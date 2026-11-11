@@ -65,6 +65,8 @@ def get_sheet(db: Session, user: User, kind: str, year: int, month: int) -> Opti
 
 def get_or_create_sheet(db: Session, user: User, kind: str, year: int, month: int) -> Sheet:
     """Latest sheet of the month; for overtime a supplementary sheet is opened when it is already approved."""
+    if user.is_management:
+        raise WorkflowError("Management accounts only approve sheets: they do not declare on-call or overtime.")
     sheet = get_sheet(db, user, kind, year, month)
     if sheet is None or (kind == KIND_OVERTIME and sheet.status == APPROVED):
         sheet = Sheet(user_id=user.id, kind=kind, year=year, month=month, status=DRAFT,

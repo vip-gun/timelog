@@ -212,7 +212,7 @@ def save_user(
     email: str = Form(""), team: str = Form(""),
     manager_id: Optional[str] = Form(None), manager_locked: Optional[str] = Form(None), team_locked: Optional[str] = Form(None),
     grade_id: Optional[str] = Form(None), is_expert: Optional[str] = Form(None),
-    is_admin: Optional[str] = Form(None), is_procurement: Optional[str] = Form(None), is_active: Optional[str] = Form(None),
+    is_admin: Optional[str] = Form(None), is_procurement: Optional[str] = Form(None), is_management: Optional[str] = Form(None), is_active: Optional[str] = Form(None),
     password: str = Form(""),
     me: User = Depends(admin_user), db: Session = Depends(get_db),
 ):
@@ -244,6 +244,7 @@ def save_user(
             raise ValueError("You cannot remove your own admin rights or deactivate yourself.")
         user.is_admin, user.is_active = bool(is_admin), bool(is_active) and not user.is_archived
         user.is_procurement = bool(is_procurement)
+        user.is_management = bool(is_management)
         new_manager = int(manager_id) if manager_id else None
         if new_manager is not None and user.id is not None:
             if new_manager == user.id or new_manager in subordinate_ids(db, user):
@@ -258,7 +259,7 @@ def save_user(
             raise ValueError("A password is required for a new local user.")
         db.flush()
         audit(db, me, "user_create" if creating else "user_update", "user", user.id,
-              username=user.username, admin=user.is_admin, procurement=user.is_procurement, expert=user.is_expert, active=user.is_active,
+              username=user.username, admin=user.is_admin, procurement=user.is_procurement, management=user.is_management, expert=user.is_expert, active=user.is_active,
               manager_id=user.manager_id, password_changed=bool(password))
         db.commit()
     except ValueError as exc:

@@ -34,6 +34,9 @@ def submitted_message(sheets) -> str:
 async def submit_month(request: Request, year: int, month: int, background: BackgroundTasks,
                        me: User = Depends(current_user), db: Session = Depends(get_db)):
     check_month(year, month)
+    if me.is_management:
+        flash(request, "Management accounts only approve sheets: there is nothing to submit.", "error")
+        return redirect("/")
     form = await request.form()
     back = str(form.get("back", "overtime"))
     url = f"/{'oncall' if back == 'oncall' else 'overtime'}/{year}/{month}"

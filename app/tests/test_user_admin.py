@@ -138,3 +138,25 @@ def test_notification_bell(browser, db, users):
     db.commit()
     page = alice.get("/").text
     assert "was rejected: fix day" in page and 'class="bell-count">1<' in page
+
+
+def test_management_role_approves_only(browser, db, users):
+    from timelog.models import User as U
+    admin = browser("admin")
+    carol = users["carol"]
+    admin.post("/admin/users/save", {"user_id": carol.id, "first_name": "Carol", "is_management": "1", "is_active": "1",
+                                     "team": carol.team or "", "grade_id": ""})
+    db.expire_all()
+    assert db.get(U, carol.id).is_management is True
+    c = browser("carol")
+    home = c.get("/").text
+    assert "approval only" in home and 'href="/overtime"' not in home and 'href="/oncall"' not in home
+    assert c.get("/oncall/2026/9", follow_redirects=False).status_code == 303
+    assert c.get("/overtime/2026/9", follow_redirects=False).status_code == 303
+    c.post("/overtime/entries", {"date": "2026-09-03", "start": "18:00", "end": "19:00", "description": "x"})
+    c.post("/oncall/2026/9", {"oc_2026-09-04": "1", "action": "save"})
+    assert c.post("/submit/2026/9", {}).status_code == 303
+    db.expire_all()
+    assert db.scalar(select(Sheet).where(Sheet.user_id == carol.id)) is None
+    assert "Approvals" in c.get("/guide").text and 'id="submit"' not in c.get("/guide").text
+    assert "Management" in admin.get("/admin/users").text

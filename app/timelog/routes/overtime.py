@@ -29,6 +29,9 @@ def view(request: Request, year: int, month: int, user_id: Optional[int] = None,
     remember_month(request, year, month)
     s = get_settings()
     target = resolve_target(db, me, user_id)
+    if target.is_management:
+        flash(request, "Management accounts only approve sheets: there is nothing to declare.", "info")
+        return redirect("/")
     start, end = month_bounds(year, month)
     sheets = workflow.get_sheets(db, target, KIND_OVERTIME, year, month)
     blocks = []

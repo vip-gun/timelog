@@ -41,6 +41,7 @@ def scope_users(db: Session, viewer: User, team: str = "") -> List[User]:
     else:
         ids = subordinate_ids(db, viewer)
         users = list(db.scalars(select(User).where(User.id.in_(ids)))) if ids else []
+    users = [u for u in users if not u.is_management]   # they only approve: nothing to report
     if team:
         users = [u for u in users if u.team == team]
     return sorted(users, key=lambda u: u.sort_key)

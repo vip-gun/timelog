@@ -25,7 +25,10 @@ def team_oncall_enabled(db: Session, name: str) -> bool:
 
 def oncall_enabled(db: Session, user: User) -> bool:
     """Whether `user` declares on-call duty (their team has it switched on)."""
-    return team_oncall_enabled(db, user.team)
+    return not user.is_management and team_oncall_enabled(db, user.team)
+
+
+MANAGEMENT_MESSAGE = "Management accounts only approve sheets: there is nothing to declare."
 
 
 def oncall_disabled_message(user: User) -> str:

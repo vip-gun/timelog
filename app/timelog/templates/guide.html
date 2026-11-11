@@ -9,8 +9,8 @@
 <nav class="subnav docs-toc" aria-label="Sections">
   <a href="#quick">The short version</a>
   {% if oncall_enabled %}<a href="#oncall">Declaring on-call</a>{% endif %}
-  <a href="#overtime">Declaring overtime</a>
-  <a href="#submit">Submitting</a>
+  {% if not user.is_management %}<a href="#overtime">Declaring overtime</a>
+  <a href="#submit">Submitting</a>{% endif %}
   {% if is_manager or user.is_admin %}<a href="#manager">For managers</a>{% endif %}
   <a href="#late">Deadlines</a>
   <a href="#faq">Problems</a>
@@ -19,6 +19,14 @@
 
 <section class="card docs" id="quick">
   <h2>The short version</h2>
+  {% if user.is_management %}
+  <p>Your role is <strong>Management</strong>: you only <strong>approve</strong>. You do not declare on-call or overtime.</p>
+  <ol>
+    <li>Open <a href="/approvals">Approvals</a>: sheets of the people below you waiting for a decision.</li>
+    <li><strong>Approve</strong>, or <strong>Reject</strong> with a comment the employee will read.</li>
+    <li><a href="/team">Statistics</a> shows the status of your team.</li>
+  </ol>
+  {% else %}
   <ol>
     {% if oncall_enabled %}<li><strong>On-call</strong>: tick the days you were on call, or switch on a whole week.</li>{% endif %}
     {% if not user.is_expert %}<li><strong>Overtime</strong>: add one entry per period worked.</li>{% endif %}
@@ -26,6 +34,7 @@
     <li>Your manager <strong>approves</strong> or <strong>rejects</strong> with a comment. If rejected, fix and submit again.</li>
   </ol>
   <p>The <a href="/">Dashboard</a> shows the status of your last six months. Only you and the managers above you see your sheets.</p>
+  {% endif %}
   {% if not oncall_enabled %}
   <div class="callout"><span class="callout-title">Overtime only</span>Your team <strong>{{ user.team }}</strong> does overtime only: there is no On-call page for you.</div>
   {% endif %}
@@ -56,7 +65,8 @@
 </section>
 {% endif %}
 
-{% if not user.is_expert %}
+{% if user.is_management %}
+{% elif not user.is_expert %}
 <section class="card docs" id="overtime">
   <h2>Declaring overtime</h2>
   <p>Open <a href="/overtime">Overtime</a> and use the <strong>Log overtime</strong> form.</p>
@@ -95,6 +105,7 @@
 </section>
 {% endif %}
 
+{% if not user.is_management %}
 <section class="card docs" id="submit">
   <h2>Submitting</h2>
   <p>Submit <strong>once per month</strong> from {{ "either the On-call or the Overtime page" if oncall_enabled and not user.is_expert else ("the On-call page" if oncall_enabled else "the Overtime page") }}: every editable sheet of that month is sent together.</p>
@@ -116,6 +127,8 @@
   </table>
   <p class="help">Messages about your sheets appear as banners until you dismiss them (and by e-mail when configured).</p>
 </section>
+
+{% endif %}
 
 {% if is_manager or user.is_admin %}
 <section class="card docs" id="manager">
@@ -152,7 +165,7 @@
     <dd>Your team (<strong>{{ user.team }}</strong>) does overtime only. Ask an administrator if that is wrong.</dd>
     {% endif %}
     <dt>No Overtime menu.</dt>
-    <dd>Experts do not declare overtime. Otherwise ask an administrator to check your profile.</dd>
+    <dd>Experts and Management accounts do not declare overtime. Otherwise ask an administrator to check your profile.</dd>
     <dt>"Weekend/holiday overtime must be on an on-call day or pre-approved."</dt>
     <dd>Book that day on your on-call sheet, or tick <em>pre-approved</em> once your manager agreed.</dd>
     <dt>"Withdraw it first."</dt>
