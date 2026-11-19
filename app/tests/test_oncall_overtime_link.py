@@ -39,17 +39,13 @@ def test_overtime_on_oncall_day_detected_automatically(browser, db, users):
     assert entry.on_call_intervention and entry.incident_ref == "INC42"
     # the on-call grid shows the hours logged that day
     assert "1.50 h" in alice.get("/oncall/2026/8").text
-    # the form knows the on-call dates for the live hint
-    assert "2026-08-09" in alice.get("/overtime/2026/8").text.split('data-oncall-dates="')[1].split('"')[0]
 
 
-def test_weekend_overtime_outside_oncall_needs_preapproval(browser, db, users):
+def test_weekend_overtime_outside_oncall_needs_no_preapproval(browser, db, users):
     alice = browser("alice")
     alice.post("/overtime/entries", _ot("2026-08-16", "10:00", "12:00"))  # Sunday, not on-call
-    assert _sheet(db, users["alice"], "overtime") is None
-    alice.post("/overtime/entries", _ot("2026-08-16", "10:00", "12:00", preapproved="1"))
     entry = _sheet(db, users["alice"], "overtime").overtime_entries[0]
-    assert entry.preapproved and not entry.on_call_intervention
+    assert not entry.on_call_intervention
 
 
 def test_submit_rechecks_oncall_days(browser, db, users):
@@ -58,8 +54,6 @@ def test_submit_rechecks_oncall_days(browser, db, users):
     alice.post("/overtime/entries", _ot("2026-08-09", "10:00", "11:00"))
     alice.post("/oncall/2026/8", {"action": "save"})  # on-call day removed afterwards
     sheet = _sheet(db, users["alice"], "overtime")
-    alice.post(f"/submit/{sheet.year}/{sheet.month}")
-    assert _sheet(db, users["alice"], "overtime").status == "draft"  # refused: Sunday no longer justified
     alice.post("/oncall/2026/8", {"oc_2026-08-09": "1", "action": "save"})
     alice.post(f"/submit/{sheet.year}/{sheet.month}")
     sheet = _sheet(db, users["alice"], "overtime")

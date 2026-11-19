@@ -70,11 +70,10 @@ def test_oncall_page_submit_button_sends_overtime_too(browser, db, users):
 def test_refused_sheet_blocks_whole_submission(browser, db, users):
     alice = browser("alice")
     alice.post("/oncall/2026/8", {"oc_2026-08-12": "1", "action": "save"})
-    # weekend overtime, not on an on-call day and not pre-approved -> refused at submission
-    alice.post("/overtime/entries", _ot("2026-08-08", "10:00", "11:00", preapproved="1"))
-    db.expire_all()
-    entry = _sheets(db, users["alice"], "overtime")[0].overtime_entries[0]
-    entry.preapproved = False
+    # an overtime sheet that cannot be submitted: it holds a TIL entry while time in lieu is switched off
+    alice.post("/overtime/entries", _ot("2026-08-11", "10:00", "11:00", compensation="TIL"))
+    from timelog.app_settings import SETTING_TIL_ENABLED, set_setting
+    set_setting(db, SETTING_TIL_ENABLED, "0")
     db.commit()
     alice.post("/submit/2026/8", {})
     assert [s.status for s in _sheets(db, users["alice"], "oncall")] == ["draft"]
@@ -127,9 +126,9 @@ def test_current_month_button(browser, users):
     today = dt.date.today()
     alice = browser("alice")
     for kind in ("oncall", "overtime"):
-        assert "Current month" not in alice.get(f"/{kind}/{today.year}/{today.month}").text
+        assert "Go to Current Month" not in alice.get(f"/{kind}/{today.year}/{today.month}").text
         page = alice.get(f"/{kind}/2025/3").text
-        assert f'href="/{kind}/{today.year}/{today.month}"' in page and "Current month" in page
+        assert f'href="/{kind}/{today.year}/{today.month}"' in page and "Go to Current Month" in page
 
 
 def test_admin_documentation_page(browser, users):

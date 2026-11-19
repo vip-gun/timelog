@@ -15,7 +15,7 @@ def _approved_august(browser, db, users):
     bob.post("/oncall/2026/8", {"oc_2026-08-10": "1", "iv_2026-08-10": "1", "oc_2026-08-11": "1", "action": "submit"})
     alice.post("/overtime/entries", _ot("2026-08-10", "18:00", "21:00"))
     alice.post("/overtime/entries", _ot("2026-08-10", "22:00", "23:45", compensation="TIL"))
-    alice.post("/overtime/entries", _ot("2026-08-09", "10:00", "12:30", preapproved="1"))   # Sunday
+    alice.post("/overtime/entries", _ot("2026-08-09", "10:00", "12:30"))   # Sunday
     alice.post("/submit/2026/8")
     db.expire_all()
     for s in db.query(Sheet).filter(Sheet.status == "submitted"):

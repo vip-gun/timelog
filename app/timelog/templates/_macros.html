@@ -12,7 +12,7 @@
     <a class="btn btn-ghost btn-icon" href="{{ base }}/{{ p[0] }}/{{ p[1] }}{{ extra }}" aria-label="Previous month" title="{{ month_label(p[0], p[1]) }}">&larr;</a>
     <span class="current">{{ month_label(year, month) }}</span>
     <a class="btn btn-ghost btn-icon" href="{{ base }}/{{ n[0] }}/{{ n[1] }}{{ extra }}" aria-label="Next month" title="{{ month_label(n[0], n[1]) }}">&rarr;</a>
-    {% if (year, month) != (today.year, today.month) %}<a class="btn btn-ghost btn-sm" href="{{ base }}/{{ today.year }}/{{ today.month }}{{ extra }}" title="{{ month_label(today.year, today.month) }}">Current month</a>{% endif %}
+    {% if (year, month) != (today.year, today.month) %}<a class="btn btn-ghost btn-sm" href="{{ base }}/{{ today.year }}/{{ today.month }}{{ extra }}" title="{{ month_label(today.year, today.month) }}">Go to Current Month</a>{% endif %}
   </div>
 {%- endmacro %}
 

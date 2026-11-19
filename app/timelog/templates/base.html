@@ -39,6 +39,9 @@
     {% if user.is_procurement or user.is_admin %}<a href="/payroll" class="{{ 'active' if path.startswith('/payroll') }}">Payroll</a>{% endif %}
     <a href="/guide" class="guide-link {{ 'active' if path.startswith('/guide') }}">User Guide</a>
   </nav>
+  {% if cutoff_banner %}{% set c = cutoff_banner %}
+  <div class="deadline-box{{ ' is-soon' if c.days <= 3 }}" title="{{ c.work }} work must be submitted and approved by this date{% if c.late %} (past the {{ c.work }} cut-off: paid with the {{ c.paid_with }} payroll){% endif %} - {% if c.days == 0 %}today{% elif c.days == 1 %}tomorrow{% else %}{{ c.days }} days left{% endif %}">Payroll Deadline: <strong>{{ c.deadline|date }}</strong></div>
+  {% endif %}
   {% if user.is_admin %}<a class="admin-link {{ 'active' if path.startswith('/admin') }}" href="/admin/users">Admin</a>{% endif %}
   <div class="who">
     {% if bell is not none %}

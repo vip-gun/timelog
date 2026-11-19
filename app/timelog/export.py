@@ -252,15 +252,15 @@ def build_export(db: Session, viewer: User, year: int, month: int, team: str = "
     ws = wb.create_sheet("Overtime Detail")
     titles = ["Team", "Last name", "First name", "Work month", "Note", "Date", "Day type",
               "Start", "End", "Hours", "Night hours"] + (["Compensation", "TIL credit"] if til else []) + [
-              "On-call intervention", "Pre-approved", "Incident", "Description"]
-    _header(ws, 1, titles, [24, 22, 18, 11, 20, 12, 14, 8, 8, 8, 8] + ([13, 10] if til else []) + [12, 12, 16, 60])
+              "On-call intervention", "ServiceNow #", "Description"]
+    _header(ws, 1, titles, [24, 22, 18, 11, 20, 12, 14, 8, 8, 8, 8] + ([13, 10] if til else []) + [12, 16, 60])
     for sh in overtime:
         u = by_id[sh.user_id]
         for e in sh.overtime_entries:
             ws.append(_emp_cols(u) + _work_cols(sh) + [
                 e.date, DAY_TYPE_LABELS[e.day_type], fmt_minutes(e.start_minute), fmt_minutes(e.end_minute),
                 float(e.hours), float(e.night_hours)] + ([e.compensation, float(e.til_credit)] if til else []) + [
-                "Yes" if e.on_call_intervention else "", "Yes" if e.preapproved else "",
+                "Yes" if e.on_call_intervention else "",
                 e.incident_ref, e.description,
             ])
             ws.cell(row=ws.max_row, column=6).number_format = "DD/MM/YYYY"

@@ -69,7 +69,7 @@
   <ul>
     <li>Date + from/to in <strong>{{ settings.overtime_step_minutes }}-minute steps</strong>; day and night hours ({{ '%02d:%02d' % (settings.night_start // 60, settings.night_start % 60) }}–{{ '%02d:%02d' % (settings.night_end // 60, settings.night_end % 60) }}) are computed. Past-midnight entries are split per day; no overlaps; no future dates.</li>
     <li>Up to <strong>{{ settings.overtime_lookback_months }} months back</strong>, on the sheet of the work month. If that month is approved, a <strong>supplementary sheet</strong> is opened.</li>
-    <li>Weekend/holiday overtime needs an on-call day (automatic) or <em>pre-approved</em>, else submission is refused.</li>
+    <li>Overtime is entered in a monthly grid, one row per day (extra rows for several sessions in a day). Entries on a booked on-call day are flagged as on-call interventions automatically.</li>
     <li>Compensation is <strong>paid</strong> or <strong>time in lieu</strong> (when enabled in <a href="/admin/settings">Settings</a>).</li>
   </ul>
 </section>

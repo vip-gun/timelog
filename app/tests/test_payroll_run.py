@@ -32,7 +32,7 @@ def _declare(browser, name):
     b = browser(name)
     b.post(f"/oncall/{TODAY.year}/{TODAY.month}", {f"oc_{TODAY.isoformat()}": "1", "action": "save"})
     if name != "bob":
-        b.post("/overtime/entries", _ot(TODAY.isoformat(), "18:00", "19:30", preapproved="1"))
+        b.post("/overtime/entries", _ot(TODAY.isoformat(), "18:00", "19:30"))
     b.post(f"/submit/{TODAY.year}/{TODAY.month}")
 
 
@@ -168,7 +168,7 @@ def test_late_submission_is_flagged_to_the_user(browser, db, users):
     _download_both(proc, *THIS)
     proc.post(f"/payroll/{THIS[0]}/{THIS[1]}/sent", {"confirm": "1"})
     # more overtime for the closed month: told at once that it will be paid next month
-    alice.post("/overtime/entries", _ot(TODAY.isoformat(), "20:00", "21:00", preapproved="1"))
+    alice.post("/overtime/entries", _ot(TODAY.isoformat(), "20:00", "21:00"))
     page = alice.get("/overtime").text
     assert "paid with the" in page
     alice.post(f"/submit/{TODAY.year}/{TODAY.month}")

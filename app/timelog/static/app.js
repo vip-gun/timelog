@@ -176,24 +176,74 @@
   }
 
   // Typed times: "845", "8.45", "8h45" or "8" become HH:MM when the field loses focus.
-  document.querySelectorAll("input.js-time").forEach(function (input) {
-    input.addEventListener("blur", function () {
-      var m = /^(\d{1,2})(?:[:.hH]?(\d{2}))?$/.exec(input.value.trim());
-      if (m && (m[2] !== undefined || m[1].length <= 2)) {
-        input.value = ("0" + m[1]).slice(-2) + ":" + (m[2] || "00");
-      }
-    });
+  document.addEventListener("focusout", function (ev) {
+    var input = ev.target;
+    if (!input.matches || !input.matches("input.js-time")) return;
+    var m = /^(\d{1,2})(?:[:.hH]?(\d{2}))?$/.exec(input.value.trim());
+    if (m) input.value = ("0" + m[1]).slice(-2) + ":" + (m[2] || "00");
   });
 
-  // Overtime form: tell the user when the chosen date is one of their on-call days (detected server-side too).
-  var otForm = document.getElementById("ot-form");
-  if (otForm) {
-    var onCallDates = (otForm.getAttribute("data-oncall-dates") || "").split(",").filter(Boolean);
-    var dateInput = document.getElementById("ot-date"), hint = document.getElementById("ot-oncall-hint");
-    var updateHint = function () { hint.hidden = onCallDates.indexOf(dateInput.value) === -1; };
-    dateInput.addEventListener("change", updateHint);
-    dateInput.addEventListener("input", updateHint);
-    updateHint();
+  // Overtime grid: "+" adds a row for another session on the same day, "x" clears a row (a cleared saved row is deleted on save).
+  var otGrid = document.getElementById("ot-grid");
+  if (otGrid) {
+    var otBody = otGrid.querySelector("tbody");
+    var otSeq = 0;
+    var otStep = Number.parseInt(otGrid.getAttribute("data-step"), 10) || 15;
+    // The "To" suggestions of a row only list times after its "From" (one datalist per row).
+    var toMinutes = function (v) {
+      var m = /^(\d{1,2}):(\d{2})$/.exec(v.trim());
+      return m ? Number.parseInt(m[1], 10) * 60 + Number.parseInt(m[2], 10) : null;
+    };
+    var syncTo = function (tr) {
+      var from = tr.querySelector('input[name="start"]'), to = tr.querySelector("input.js-to");
+      if (!from || !to) return;
+      if (!to.id) return;
+      var id = "ot-to-" + to.id, list = document.getElementById(id);
+      if (!list) { list = document.createElement("datalist"); list.id = id; to.parentNode.appendChild(list); }
+      var f = toMinutes(from.value);
+      var html = "";
+      for (var m = (f === null ? 0 : f + otStep); m <= 1440; m += otStep) {
+        var t = ("0" + Math.floor(m / 60)).slice(-2) + ":" + ("0" + (m % 60)).slice(-2);
+        html += '<option value="' + t + '">';
+      }
+      list.innerHTML = html;
+      to.setAttribute("list", id);
+    };
+    otBody.querySelectorAll("tr").forEach(syncTo);
+    otBody.addEventListener("input", function (ev) { if (ev.target.name === "start") syncTo(ev.target.closest("tr")); });
+    otBody.addEventListener("change", function (ev) { if (ev.target.name === "start") syncTo(ev.target.closest("tr")); });
+    otBody.addEventListener("focusout", function (ev) {
+      if (ev.target.name === "start") setTimeout(function () { syncTo(ev.target.closest("tr")); }, 0);  // after HH:MM normalisation
+    });
+    otBody.addEventListener("click", function (ev) {
+      var btn = ev.target.closest ? ev.target.closest("button") : null;
+      if (!btn) return;
+      var tr = btn.closest("tr");
+      if (btn.classList.contains("js-ot-clear")) {
+        tr.querySelectorAll("input:not([type=hidden])").forEach(function (i) { i.value = ""; });
+        var sel = tr.querySelector("select"); if (sel) sel.value = "PAID";
+        if (tr.classList.contains("ot-extra")) tr.hidden = true;  // still posted: a saved entry is deleted, a new row is ignored
+      } else if (btn.classList.contains("js-ot-add")) {
+        var day = tr.getAttribute("data-date"), last = tr;
+        otBody.querySelectorAll('tr[data-date="' + day + '"]').forEach(function (r) { last = r; });
+        var copy = tr.cloneNode(true);
+        copy.classList.add("ot-extra");
+        copy.hidden = false;
+        copy.querySelectorAll(".ot-daylabel").forEach(function (n) { n.remove(); });
+        copy.querySelector('input[name="row_id"]').value = "";
+        otSeq += 1;
+        copy.querySelectorAll("input:not([type=hidden])").forEach(function (i) { i.value = ""; });
+        var csel = copy.querySelector("select"); if (csel) csel.value = "PAID";
+        var hc = copy.querySelector('input[type=hidden][name="compensation"]'); if (hc) hc.value = "PAID";
+        copy.querySelectorAll("[id]").forEach(function (n) { n.id = n.id + "-n" + otSeq; });
+        copy.querySelectorAll("label[for]").forEach(function (n) { n.setAttribute("for", n.getAttribute("for") + "-n" + otSeq); });
+        copy.querySelector(".js-ot-add").remove();
+        copy.querySelectorAll("datalist").forEach(function (n) { n.remove(); });
+        last.parentNode.insertBefore(copy, last.nextSibling);
+        syncTo(copy);
+        copy.querySelector('input[name="start"]').focus();
+      }
+    });
   }
 
   // On-call grid: keep checkboxes consistent and show live totals.

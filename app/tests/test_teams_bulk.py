@@ -121,14 +121,13 @@ def test_oncall_export_has_payroll_check_block(browser, db, users):
     assert ws.cell(gap + 1, 38).value == total
 
 
-def test_reviewer_sees_preapproved_entries(browser, db, users):
+def test_reviewer_sees_overtime_entries(browser, db, users):
     from test_v1_features import _ot
     alice, mgr = browser("alice"), browser("manager")
-    alice.post("/overtime/entries", _ot("2026-08-09", "10:00", "12:30", preapproved="1", description="Planned release"))
+    alice.post("/overtime/entries", _ot("2026-08-09", "10:00", "12:30", description="Planned release"))
     alice.post("/submit/2026/8")
     page = mgr.get(f"/overtime/2026/8?user_id={users['alice'].id}").text
-    assert 'tag tag-preapproved' in page and "preapproved-note" not in page          # Context column tag only, no banner
-    assert "1 pre-approved" in mgr.get("/approvals").text
+    assert "Planned release" in page and "pre-approved" not in page.lower()
     assert 'class="avatar"' not in page
 
 

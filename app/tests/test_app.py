@@ -96,11 +96,9 @@ def test_expert_cannot_file_overtime(browser, db, users):
     assert _overtime_sheets(db, users["bob"]) == []
 
 
-def test_overtime_split_night_and_weekend_rule(browser, db, users):
+def test_overtime_split_night(browser, db, users):
     alice = browser("alice")
-    # Friday 7 Aug 23:00 -> Sat 02:00 without on-call/pre-approval: Saturday part refused
-    alice.post("/overtime/entries", _ot("2026-08-07", "23:00", "02:00"))
-    assert _overtime_sheets(db, users["alice"]) == []
+    # Friday 7 Aug 23:00 -> Sat 02:00 is split per day
     alice.post("/oncall/2026/8", {"oc_2026-08-07": "1", "oc_2026-08-08": "1", "action": "save"})
     alice.post("/overtime/entries", _ot("2026-08-07", "23:00", "02:00", compensation="TIL"))
     sheet = _overtime_sheets(db, users["alice"])[0]
@@ -127,7 +125,7 @@ def test_overtime_15_minute_steps_and_typed_times(browser, db, users):
 
 def test_overtime_not_in_future(browser, db, users):
     tomorrow = dt.date.today() + dt.timedelta(days=1)
-    browser("alice").post("/overtime/entries", _ot(tomorrow.isoformat(), "18:00", "19:00", preapproved="1"))
+    browser("alice").post("/overtime/entries", _ot(tomorrow.isoformat(), "18:00", "19:00"))
     assert _overtime_sheets(db, users["alice"]) == []
 
 
@@ -162,7 +160,7 @@ def test_export_contains_only_approved_scope(browser, db, users):
     alice, carol = browser("alice"), browser("carol")
     alice.post("/oncall/2026/8", {**_oncall_form([10, 11]), "action": "submit"})
     carol.post("/oncall/2026/8", {**_oncall_form([12]), "action": "submit"})
-    alice.post("/overtime/entries", _ot("2026-08-09", "10:00", "13:00", preapproved="1"))
+    alice.post("/overtime/entries", _ot("2026-08-09", "10:00", "13:00"))
     ot = _overtime_sheets(db, users["alice"])[0]
     alice.post(f"/submit/{ot.year}/{ot.month}")
     mgr = browser("manager")

@@ -64,9 +64,11 @@ def sheet_content(sheet: Sheet) -> dict:
             for d in sorted(sheet.oncall_days, key=lambda d: d.date)
         ]
     else:
+        # e.preapproved: legacy flag (no longer settable), kept so digests of earlier signatures stay valid
         base["entries"] = [
             [e.date.isoformat(), e.start_minute, e.end_minute, e.day_type, _num(e.hours), _num(e.night_hours),
-             e.compensation, _num(e.til_credit), e.on_call_intervention, e.preapproved, e.incident_ref, e.description]
+             e.compensation, _num(e.til_credit), e.on_call_intervention, e.preapproved,
+             e.incident_ref, e.description]
             for e in sorted(sheet.overtime_entries, key=lambda e: (e.date, e.start_minute))
         ]
     return base

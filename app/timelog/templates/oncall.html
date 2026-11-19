@@ -55,7 +55,7 @@
 {% set rates = {"W": grade.rate_weekday|float, "SAT": grade.rate_saturday|float, "SUN": grade.rate_sunday|float, "H": grade.rate_holiday|float} if show_amounts else none %}
 <table class="table grid animate" id="oncall-grid" data-expert="{{ '1' if is_expert else '0' }}" data-rates='{{ rates|tojson if rates else "" }}'>
   <thead>
-    <tr><th scope="col">Rotation week</th><th scope="col">Date</th><th scope="col">Day</th><th scope="col">Type</th><th scope="col" class="c">On-call</th><th scope="col" class="c">Intervention</th>{% if is_expert %}<th scope="col">Incident #</th><th scope="col" class="col-comment">Comment</th>{% endif %}{% if show_amounts %}<th scope="col" class="r">Amount</th>{% endif %}</tr>
+    <tr><th scope="col">Rotation week</th><th scope="col">Date</th><th scope="col">Type</th><th scope="col" class="c">On-call</th><th scope="col" class="c">Intervention</th>{% if is_expert %}<th scope="col">Incident #</th><th scope="col" class="col-comment">Comment</th>{% endif %}{% if show_amounts %}<th scope="col" class="r">Amount</th>{% endif %}</tr>
   </thead>
   <tbody>
   {% for r in rows %}
@@ -71,8 +71,7 @@
         {% if w.spill %}<span class="spill" title="These days are booked on the {{ w.spill_dir }} month's sheet">+ {{ w.spill_label }} ({{ w.spill_dir }} month)</span>{% endif %}
       </td>
       {% endif %}
-      <td>{{ r.date|date }}{% if r.conflict %} <span class="tag tag-conflict" title="{{ r.conflict.names|join(', ') }}{{ ' + ' ~ r.conflict.hidden ~ ' outside your team' if r.conflict.hidden }}">⚠ conflict</span>{% endif %}</td>
-      <td>{{ r.date.strftime("%a") }}</td>
+      <td class="nowrap">{{ r.date|date }} <span class="muted small">{{ r.date.strftime("%a") }}</span>{% if r.conflict %} <span class="tag tag-conflict" title="{{ r.conflict.names|join(', ') }}{{ ' + ' ~ r.conflict.hidden ~ ' outside your team' if r.conflict.hidden }}">⚠ conflict</span>{% endif %}</td>
       <td><span class="daytype dt-badge-{{ r.day_type }}">{{ DAY_TYPE_LABELS[r.day_type] }}</span>{% if r.holiday %} <span class="muted small">{{ r.holiday }}</span>{% endif %}</td>
       <td class="c"><input type="checkbox" name="oc_{{ key }}" value="1" class="js-oc" {% if d %}checked{% endif %} {% if not editable %}disabled{% endif %} aria-label="On-call {{ r.date|date }}"></td>
       {% if is_expert %}
@@ -88,7 +87,7 @@
   </tbody>
   <tfoot>
     <tr>
-      <td colspan="4">Days · W {{ counts.get('W', 0) }} · Sat {{ counts.get('SAT', 0) }} · Sun {{ counts.get('SUN', 0) }} · H {{ counts.get('H', 0) }}</td>
+      <td colspan="3">Days · W {{ counts.get('W', 0) }} · Sat {{ counts.get('SAT', 0) }} · Sun {{ counts.get('SUN', 0) }} · H {{ counts.get('H', 0) }}</td>
       <td class="c js-days">{{ rows|selectattr("row")|list|length }}</td>
       <td class="c js-ivs">{{ interventions }}</td>
       {% if is_expert %}<td colspan="2" class="r">{% if show_amounts %}Total {{ settings.currency }}{% endif %}</td>{% endif %}

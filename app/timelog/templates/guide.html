@@ -69,17 +69,16 @@
 {% elif not user.is_expert %}
 <section class="card docs" id="overtime">
   <h2>Declaring overtime</h2>
-  <p>Open <a href="/overtime">Overtime</a> and use the <strong>Log overtime</strong> form.</p>
+  <p>Open <a href="/overtime">Overtime</a> and use the <strong>Log overtime</strong> grid: <strong>one row per day</strong>. Fill in the days you worked, leave the others empty, then <strong>Save overtime</strong>. Worked twice in a day? Use <strong>+</strong> on that day to add a row.</p>
   <img class="guide-shot" src="/static/guide/overtime.png?v={{ build.asset_tag }}" width="2040" height="1500" alt="The overtime page: the entry form above the table of entries with day and night hours per day type">
   <table class="table">
     <thead><tr><th scope="col">Field</th><th scope="col">What to enter</th></tr></thead>
     <tbody>
-      <tr><th scope="row">Date</th><td>Today or earlier, up to {{ settings.overtime_lookback_months }} months back.</td></tr>
+      <tr><th scope="row">Date</th><td>One row per day of the month, up to today. Use the month arrows for earlier months (up to {{ settings.overtime_lookback_months }} months back).</td></tr>
       <tr><th scope="row">From / To</th><td>{{ step }}-minute steps. Pick or type: <code>08:45</code>, <code>8.45</code>, <code>8h45</code>, <code>0845</code>, <code>8</code>. <code>24:00</code> = midnight.</td></tr>
       {% if features.til %}<tr><th scope="row">Compensation</th><td><strong>Paid</strong> (default) or <strong>Time in lieu</strong> (time off, no payment).</td></tr>{% endif %}
-      <tr><th scope="row">Incident #</th><td>Ticket number, if any.</td></tr>
-      <tr><th scope="row">Description</th><td>What you did. Required.</td></tr>
-      <tr><th scope="row">Pre-approved</th><td>Tick for weekend or holiday work agreed by your manager that is not on an on-call day.</td></tr>
+      <tr><th scope="row">ServiceNow #</th><td>Ticket number, if any.</td></tr>
+      <tr><th scope="row">Description of Intervention</th><td>What you did. Required.</td></tr>
     </tbody>
   </table>
   <ul>
@@ -87,9 +86,8 @@
     <li>An entry past midnight is split per day; if the second part falls in the next month, enter it on that month.</li>
     <li>Your entries cannot overlap.</li>
     {% if features.til %}<li>Time in lieu is credited with a factor by day type and day/night, shown under your entries.</li>{% endif %}
-    <li>Wrong entry? Delete it and add it again (while the sheet is a draft or rejected).</li>
+    <li>Wrong entry? Change the row (or clear it with ✕) and save again, while the sheet is a draft or rejected.</li>
   </ul>
-  <div class="callout callout-warn"><span class="callout-title">Weekends and holidays</span>Overtime on a Saturday, Sunday or holiday must be on one of <strong>your on-call days</strong> or marked <strong>pre-approved</strong>, otherwise the month cannot be submitted.</div>
   <h3>Forgot a day in a past month?</h3>
   <p>Enter it with its real date; it goes to that month's sheet.</p>
   <ul>
@@ -140,7 +138,6 @@
   </ol>
   <ul>
     <li><strong>On-call conflicts</strong>: a red banner marks days another employee also has on a submitted or approved sheet. Approval is not blocked; you decide.</li>
-    <li><strong>Pre-approved</strong> weekend/holiday overtime: only for work you agreed.</li>
     <li><strong>Late approval</strong> (after the cut-off): paid with the next payroll; the employee is told.</li>
     <li>Some teams do overtime only; you will see no on-call sheets for them{% if user.is_admin %} (<a href="/admin/teams">Teams</a>){% endif %}.</li>
   </ul>
@@ -166,8 +163,6 @@
     {% endif %}
     <dt>No Overtime menu.</dt>
     <dd>Experts and Management accounts do not declare overtime. Otherwise ask an administrator to check your profile.</dd>
-    <dt>"Weekend/holiday overtime must be on an on-call day or pre-approved."</dt>
-    <dd>Book that day on your on-call sheet, or tick <em>pre-approved</em> once your manager agreed.</dd>
     <dt>"Withdraw it first."</dt>
     <dd>That month's sheet is submitted. Withdraw it, add your entry, submit again.</dd>
     <dt>My time is refused.</dt>

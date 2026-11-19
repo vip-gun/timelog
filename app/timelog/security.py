@@ -141,6 +141,8 @@ def current_user(request: Request, db: Session = Depends(get_db)) -> User:
         Notification.user_id == user.id, Notification.read_at.is_(None)).order_by(Notification.id.desc()).limit(6)))
     from .bell import build_bell
     request.state.bell = build_bell(db, user, request.state.notices, request.state.is_manager)
+    from .workflow import cutoff_banner
+    request.state.cutoff_banner = cutoff_banner(db, get_settings())
     return user
 
 

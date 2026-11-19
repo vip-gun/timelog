@@ -17,38 +17,50 @@
 <p class="help"><a href="/oncall/{{ year }}/{{ month }}?user_id={{ target.id }}">View on-call sheet &rarr;</a></p>
 {% endif %}
 
-{% if can_add %}
-<details class="card details-toggle" {% if not blocks or month_in_window %}open{% endif %}>
-  <summary>Log overtime</summary>
+{% if latest_submitted %}<div class="banner banner-info">Your {{ month_label(year, month) }} sheet is awaiting validation: withdraw it below to change this month.</div>{% endif %}
+{% if grid_active %}
+<section class="card">
+  <h2>Log overtime</h2>
   <p class="help">
-    Any day from {{ window_first|date }} to today: the entry goes to the sheet of its month, so you can catch up on previous months.
-    Type a time (for example 08:45) or pick one from the list; times are in {{ step }}-minute steps. Night hours ({{ '%02d:%02d' % (settings.night_start // 60, settings.night_start % 60) }}–{{ '%02d:%02d' % (settings.night_end // 60, settings.night_end % 60) }}) are computed automatically and an entry past midnight is split per day.
-    Entries on your <strong>on-call days</strong> are detected automatically as on-call interventions; other weekend/holiday overtime must be pre-approved by your manager.
+    One row per day, from {{ window_first|date }} to today. Fill in the days you worked, leave the others empty, then <strong>Save</strong>.
+    Worked twice in a day? Use <strong>+</strong> to add a row for that day. Type a time (for example 08:45) or pick one from the list; times are in {{ step }}-minute steps.
+    Night hours ({{ '%02d:%02d' % (settings.night_start // 60, settings.night_start % 60) }}–{{ '%02d:%02d' % (settings.night_end // 60, settings.night_end % 60) }}) are computed automatically and an entry past midnight is split per day.
+    Days on your on-call sheet are marked <span class="tag tag-oncall">On-call</span> and recorded as on-call interventions.
   </p>
-  {% if latest_submitted %}<div class="banner banner-info">Your {{ month_label(year, month) }} sheet is awaiting validation: withdraw it below to add entries for this month.</div>{% endif %}
   {% if next_is_supplement %}<div class="banner banner-info">{{ month_label(year, month) }} is already approved: new entries for this month go to a <strong>supplementary sheet</strong> (late claim) that you then submit.</div>{% endif %}
-  <form method="post" action="/overtime/entries" class="form-grid" id="ot-form" data-oncall-dates="{{ window_oncall|join(',') }}">
+  <form method="post" action="/overtime/{{ year }}/{{ month }}/save" id="ot-grid" data-step="{{ step }}">
     <input type="hidden" name="csrf_token" value="{{ csrf }}">
-    <label>Date <input type="date" name="date" id="ot-date" required value="{{ default_date.isoformat() }}" min="{{ window_first.isoformat() }}" max="{{ window_last.isoformat() }}">
-      <span class="oncall-hint" id="ot-oncall-hint" hidden>● On-call day - recorded as an on-call intervention</span></label>
-    <label>From <input name="start" id="ot-start" list="ot-times" class="js-time" inputmode="numeric" autocomplete="off" placeholder="HH:MM" maxlength="5" required></label>
-    <label>To <input name="end" id="ot-end" list="ot-times" class="js-time" inputmode="numeric" autocomplete="off" placeholder="HH:MM" maxlength="5" required></label>
     <datalist id="ot-times">{% for m in range(0, 1441, step) %}<option value="{{ '%02d:%02d' % (m // 60, m % 60) }}">{% endfor %}</datalist>
-    {% if features.til %}
-    <div>
-      <span class="field-label">Compensation</span><br>
-      <div class="segmented">
-        <input type="radio" name="compensation" value="PAID" id="comp-paid" checked><label for="comp-paid">Paid</label>
-        <input type="radio" name="compensation" value="TIL" id="comp-til"><label for="comp-til">Time in lieu</label>
-      </div>
+    <div class="table-wrap">
+    <table class="table ot-grid">
+      <thead><tr><th scope="col">Date</th><th scope="col">From</th><th scope="col">To</th>{% if features.til %}<th scope="col">Comp.</th>{% endif %}<th scope="col">ServiceNow #</th><th scope="col">Description of Intervention</th><th scope="col"><span class="sr-only">Row actions</span></th></tr></thead>
+      <tbody>
+      {% for r in grid_rows %}
+        {% set i = loop.index %}
+        <tr class="ot-row{{ ' ot-off' if r.type != 'W' }}{{ ' ot-extra' if not r.first }}" data-date="{{ r.date.isoformat() }}">
+          <td class="ot-day"><input type="hidden" name="row_id" value="{{ r.id }}"><input type="hidden" name="date" value="{{ r.date.isoformat() }}">
+            {% if r.first %}<span class="ot-daylabel"><strong>{{ r.date.strftime("%d/%m") }}</strong> <span class="muted small">{{ r.date.strftime("%a") }}</span>
+              {% if r.type != 'W' %}<span class="daytype dt-badge-{{ r.type }}" title="{{ holidays.get(r.date, '') }}">{{ DAY_TYPE_LABELS[r.type] }}</span>{% endif %}
+              {% if r.on_call %}<span class="tag tag-oncall" title="Detected from your on-call sheet">On-call</span>{% endif %}</span>{% endif %}</td>
+          <td><label class="sr-only" for="ot-s{{ i }}">From {{ r.date.isoformat() }}</label><input id="ot-s{{ i }}" name="start" list="ot-times" class="js-time" inputmode="numeric" autocomplete="off" placeholder="HH:MM" maxlength="5" value="{{ r.start }}"></td>
+          <td><label class="sr-only" for="ot-e{{ i }}">To {{ r.date.isoformat() }}</label><input id="ot-e{{ i }}" name="end" list="ot-times" class="js-time js-to" inputmode="numeric" autocomplete="off" placeholder="HH:MM" maxlength="5" value="{{ r.end }}"></td>
+          {% if features.til %}
+          <td><label class="sr-only" for="ot-c{{ i }}">Compensation {{ r.date.isoformat() }}</label><select id="ot-c{{ i }}" name="compensation"><option value="PAID">Paid</option><option value="TIL"{{ ' selected' if r.comp == 'TIL' }}>TIL</option></select></td>
+          {% else %}<td class="ot-hidden-cell"><input type="hidden" name="compensation" value="{{ r.comp }}"></td>{% endif %}
+          <td><label class="sr-only" for="ot-i{{ i }}">ServiceNow # {{ r.date.isoformat() }}</label><input id="ot-i{{ i }}" name="incident_ref" maxlength="128" placeholder="INC…" value="{{ r.incident }}"></td>
+          <td><label class="sr-only" for="ot-d{{ i }}">Description {{ r.date.isoformat() }}</label><input id="ot-d{{ i }}" name="description" maxlength="1000" value="{{ r.desc }}"></td>
+          <td class="ot-actions">
+            <button type="button" class="btn btn-ghost btn-icon btn-sm js-ot-add" aria-label="Add a row for {{ r.date.isoformat() }}" title="Another session this day">+</button>
+            <button type="button" class="btn btn-ghost btn-icon btn-sm js-ot-clear" aria-label="Clear this row" title="Clear this row">✕</button>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
     </div>
-    {% else %}<input type="hidden" name="compensation" value="PAID">{% endif %}
-    <label>Incident # <input name="incident_ref" maxlength="128" placeholder="INC…"></label>
-    <label class="span-2">Description of the work <input name="description" maxlength="1000" required></label>
-    <label class="check span-2"><input type="checkbox" name="preapproved" value="1"> Requested / pre-approved by my manager <span class="muted small">(required for weekend/holiday work outside on-call)</span></label>
-    <div class="actions span-all"><button class="btn btn-primary">Add entry</button></div>
+    <div class="actions"><button class="btn btn-primary">Save overtime</button></div>
   </form>
-</details>
+</section>
 {% endif %}
 
 {% for b in blocks %}
@@ -62,9 +74,10 @@
 
   {% if b.entries %}
   {% set til = features.til or b.totals.til_hours > 0 %}
+  {% if not b.grid %}
   <div class="table-wrap">
   <table class="table animate">
-    <thead><tr><th scope="col">Date</th><th scope="col">Type</th><th scope="col">From</th><th scope="col">To</th><th scope="col" class="r">Hours</th><th scope="col" class="r">Night</th>{% if til %}<th scope="col">Comp.</th><th scope="col" class="r">TIL credit</th>{% endif %}<th scope="col">Context</th><th scope="col">Incident</th><th scope="col">Description</th>{% if b.editable %}<th scope="col"></th>{% endif %}</tr></thead>
+    <thead><tr><th scope="col">Date</th><th scope="col">Type</th><th scope="col">From</th><th scope="col">To</th><th scope="col" class="r">Hours</th><th scope="col" class="r">Night</th>{% if til %}<th scope="col">Comp.</th><th scope="col" class="r">TIL credit</th>{% endif %}<th scope="col">Context</th><th scope="col">ServiceNow #</th><th scope="col">Description</th>{% if b.editable %}<th scope="col"></th>{% endif %}</tr></thead>
     <tbody>
     {% for e in b.entries %}
       <tr>
@@ -79,8 +92,7 @@
         <td class="r">{% if e.compensation == "TIL" %}{{ e.til_credit|hours }}{% endif %}</td>
         {% endif %}
         {% set on_call = (e.date in oncall_dates) if b.sheet.editable else e.on_call_intervention %}
-        <td class="small">{% if on_call %}<span class="tag tag-oncall" title="Detected from your on-call sheet">On-call</span>{% endif %}{% if e.preapproved %} <span class="tag tag-preapproved" title="Declared as requested / pre-approved by the manager">Pre-approved</span>{% endif %}
-          {% if b.sheet.editable and e.day_type != 'W' and not on_call and not e.preapproved %}<span class="warn" title="Weekend/holiday overtime that is neither on an on-call day nor pre-approved: it cannot be submitted">⚠</span>{% endif %}</td>
+        <td class="small">{% if on_call %}<span class="tag tag-oncall" title="Detected from your on-call sheet">On-call</span>{% endif %}</td>
         <td>{{ e.incident_ref }}</td>
         <td class="desc">{{ e.description }}</td>
         {% if b.editable %}
@@ -96,6 +108,7 @@
     </tbody>
   </table>
   </div>
+  {% endif %}
   {% set t = b.totals %}
   <table class="table breakdown" aria-label="Overtime hours by day type, day and night">
     <thead><tr><th scope="col">Day type</th><th scope="col" class="r">Day hours</th><th scope="col" class="r">Night hours</th><th scope="col" class="r">Total</th><th scope="col" class="r">Factor day / night</th></tr></thead>

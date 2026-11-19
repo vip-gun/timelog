@@ -44,7 +44,7 @@
   --weekend-bg: #FAF8F3; --oncall-bg: #F5F0E6; --week-bg: #FCFBF8;
   --err-bg: #FCEBEB; --err-border: #F2C4C4; --err-text: #7A0000; --danger-border: #EBC0C0;
   --warn-bg: #FFF4DA; --warn-text: #8A5A00; --ok-bg: #E3F2EA; --ok-text: #1F5E3F;
-  --bad-bg: #FCE6E6; --bad-text: #8F0000; --pre-bg: #FFF4D6; --pre-text: #6B5413; --pre-border: #E8D79A;
+  --bad-bg: #FCE6E6; --bad-text: #8F0000;
   --chk-ok-bg: #F4FAF6; --chk-ko-bg: #FCEFEF;
 
   --radius: 2px;
@@ -470,7 +470,6 @@ pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
 .callout-title { display: block; margin-bottom: .25rem; font-family: "JetBrains Mono", monospace; font-size: .72rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--accent-text); }
 .callout-warn { background: var(--primary-tint); border-color: var(--primary-vlight); border-left-color: var(--primary); }
 .callout-warn .callout-title { color: var(--primary); }
-.tag-preapproved { background: var(--pre-bg); color: var(--pre-text); border: 1px solid var(--pre-border); font-weight: 700; }
 
 /* Dark mode. Default ("auto"): follows the operating system / browser setting (prefers-color-scheme). A user can force
    it from the header button (users.theme -> <html data-theme="light|dark">). Same values in both blocks: edit both.
@@ -490,7 +489,7 @@ pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
     --weekend-bg: #211C29; --oncall-bg: #2D2618; --week-bg: #1A1621;
     --err-bg: #3A1A1F; --err-border: #6B2D35; --err-text: #FFB4B4; --danger-border: #6B2D35;
     --warn-bg: #3A2D12; --warn-text: #F2C46B; --ok-bg: #16352A; --ok-text: #8FDDB4;
-    --bad-bg: #3A1A1F; --bad-text: #FFB4B4; --pre-bg: #382E12; --pre-text: #EBD07A; --pre-border: #6B5A25;
+    --bad-bg: #3A1A1F; --bad-text: #FFB4B4;
     --chk-ok-bg: #16302A; --chk-ko-bg: #35202A;
     --shadow-lg: 4px 4px 0 rgba(0, 0, 0, .5);
   }
@@ -511,7 +510,7 @@ pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
     --weekend-bg: #211C29; --oncall-bg: #2D2618; --week-bg: #1A1621;
     --err-bg: #3A1A1F; --err-border: #6B2D35; --err-text: #FFB4B4; --danger-border: #6B2D35;
     --warn-bg: #3A2D12; --warn-text: #F2C46B; --ok-bg: #16352A; --ok-text: #8FDDB4;
-    --bad-bg: #3A1A1F; --bad-text: #FFB4B4; --pre-bg: #382E12; --pre-text: #EBD07A; --pre-border: #6B5A25;
+    --bad-bg: #3A1A1F; --bad-text: #FFB4B4;
     --chk-ok-bg: #16302A; --chk-ko-bg: #35202A;
     --shadow-lg: 4px 4px 0 rgba(0, 0, 0, .5);
   }
@@ -575,3 +574,31 @@ pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
 .bulk-group input:not([type=checkbox]), .bulk-group select { width: 100%; }
 .bulk-bar .actions { padding: .8rem 1.25rem; border-top: 1px solid var(--border); justify-content: flex-end; }
 @media (max-width: 760px) { .bulk-group { border-right: 0; border-bottom: 1px solid var(--row-line); } }
+
+/* Overtime grid: one compact row per day */
+.ot-grid td { padding: .2rem .4rem; vertical-align: middle; }
+.ot-grid input:not([type=hidden]), .ot-grid select { width: 100%; padding: .25rem .4rem; font-size: .85rem; }
+.ot-grid input.js-time { width: 5.2rem; font-family: var(--font-mono); }
+.ot-grid .ot-day { white-space: nowrap; min-width: 9rem; }
+.ot-grid .ot-actions { white-space: nowrap; text-align: right; }
+.ot-grid tr.ot-off { background: var(--surface-2); }
+.ot-grid tr.ot-extra td.ot-day { border-left: 3px solid var(--primary-light, var(--primary)); }
+.ot-grid .ot-hidden-cell { display: none; }
+
+/* Compact on-call grid */
+.grid td, .grid th { padding-top: .35rem; padding-bottom: .35rem; }
+.grid td { font-size: .88rem; line-height: 1.3; }
+.grid td .daytype { padding-top: 0; padding-bottom: 0; }
+.grid td input:not([type=checkbox]) { padding: .3rem .5rem; font-size: .88rem; }
+.grid td.week-cell { min-width: 8.5rem; padding-top: .35rem; }
+.grid .nowrap { white-space: nowrap; }
+.grid .switch .track { width: 36px; height: 20px; }
+.grid .switch .thumb { width: 14px; height: 14px; }
+.grid .switch input:checked + .track .thumb { transform: translateX(16px); }
+.grid .spill { margin-top: .3rem; }
+
+/* Payroll deadline box in the header */
+.deadline-box { flex: none; white-space: nowrap; font-family: var(--font-mono); font-size: .72rem; padding: .3rem .65rem; border: 1px solid #C7B99C; border-radius: 2px; color: rgba(255,255,255,.85); }
+.deadline-box strong { color: #fff; font-weight: 600; }
+.deadline-box.is-soon { background: #8F0000; border-color: #FFB4B4; color: #fff; }
+@media (max-width: 1100px) { .deadline-box { display: none; } }

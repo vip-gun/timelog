@@ -193,7 +193,6 @@ class OvertimeInput:
     start_minute: int
     end_minute: int  # <= start means crossing midnight
     compensation: str = PAID
-    preapproved: bool = False
     incident_ref: str = ""
     description: str = ""
 
@@ -242,13 +241,9 @@ def add_overtime(db: Session, s: Settings, sheet: Sheet, inp: OvertimeInput) -> 
                 raise WorkflowError(f"Overlaps with an existing entry on {seg_date:%d/%m/%Y}.")
         dtype = day_type(seg_date, holidays)
         is_on_call = seg_date in on_call  # detected from the on-call sheets, never typed by the user
-        if dtype != WEEKDAY and not (is_on_call or inp.preapproved):
-            raise WorkflowError(
-                f"{seg_date:%d/%m/%Y} is a weekend / holiday and not one of your on-call days: weekend overtime "
-                "must be formally pre-approved by your manager (tick \"pre-approved\").")
         entry = OvertimeEntry(
             date=seg_date, start_minute=s0, end_minute=s1, day_type=dtype, compensation=inp.compensation,
-            on_call_intervention=is_on_call, preapproved=inp.preapproved,
+            on_call_intervention=is_on_call,
             incident_ref=inp.incident_ref.strip()[:128], description=inp.description.strip()[:1000],
         )
         _compute_entry(s, entry, dtype, factors)
@@ -256,6 +251,34 @@ def add_overtime(db: Session, s: Settings, sheet: Sheet, inp: OvertimeInput) -> 
         created.append(entry)
     db.flush()
     return created
+
+
+def save_overtime_rows(db: Session, s: Settings, sheet: Sheet,
+                       rows: List[Tuple[Optional[int], Optional[OvertimeInput]]]) -> Tuple[int, int]:
+    """Apply the rows of the monthly overtime grid to an editable sheet. Each row is (entry id or None, input or None).
+    A blank row (input None) deletes its entry, a changed row replaces it, an unchanged row is kept, a new row is added.
+    Entries that are not posted are left alone. Returns (added or replaced, deleted). The caller commits or rolls back."""
+    _require_editable(sheet)
+    existing = {e.id: e for e in sheet.overtime_entries}
+    todo: List[OvertimeInput] = []
+    deleted = 0
+    for entry_id, inp in rows:
+        entry = existing.get(entry_id) if entry_id else None
+        if entry is not None and inp is not None and (
+                entry.date, entry.start_minute, entry.end_minute % 1440, entry.compensation,
+                entry.incident_ref, entry.description) == (
+                inp.date, inp.start_minute, inp.end_minute % 1440, inp.compensation,
+                inp.incident_ref.strip()[:128], inp.description.strip()[:1000]):
+            continue  # unchanged
+        if entry is not None:
+            sheet.overtime_entries.remove(entry)
+            deleted += 1
+        if inp is not None:
+            todo.append(inp)
+    db.flush()
+    for inp in todo:
+        add_overtime(db, s, sheet, inp)
+    return len(todo), deleted
 
 
 def delete_overtime(db: Session, sheet: Sheet, entry_id: int) -> None:
@@ -310,13 +333,6 @@ def submit(db: Session, s: Settings, sheet: Sheet, actor: User, comment: str = "
         if not sheet.overtime_entries:
             raise WorkflowError("No overtime entry - nothing to submit.")
         recompute_overtime(db, s, sheet)
-        unjustified = sorted({e.date for e in sheet.overtime_entries
-                              if e.day_type != WEEKDAY and not (e.on_call_intervention or e.preapproved)})
-        if unjustified:
-            raise WorkflowError(
-                "Weekend / holiday overtime on " + ", ".join(f"{d:%d/%m}" for d in unjustified)
-                + " is neither on an on-call day nor pre-approved: book the on-call day or delete and re-add "
-                  "the entry as pre-approved.")
         if not get_flag(db, SETTING_TIL_ENABLED) and any(e.compensation == TIL for e in sheet.overtime_entries):
             raise WorkflowError("Time in lieu is disabled: delete the TIL entries and add them again as paid.")
     if sheet.user.manager_id is None:
@@ -456,6 +472,17 @@ def timing_message(db: Session, s: Settings, work_year: int, work_month: int) ->
     deadline = approval_deadline(db, s, work_year, work_month)
     return (f"To be paid with the {label} payroll your line manager must approve it by {deadline:%d/%m/%Y}; "
             "later approvals are paid the following month.", False)
+
+
+def cutoff_banner(db: Session, s: Settings, today: Optional[dt.date] = None) -> Optional[dict]:
+    """Deadline shown at the top of every page: the Finance cut-off that applies to the work of last month today
+    (the first open payroll period whose cut-off has not passed)."""
+    today = today or dt.date.today()
+    wy, wm = shift_month(today.year, today.month, -1)
+    period = expected_period(db, s, wy, wm, today)
+    deadline = cutoff_rule(db, s)(*period)
+    return {"deadline": deadline, "days": (deadline - today).days, "work": month_label(wy, wm),
+            "paid_with": month_label(*period), "late": period != (wy, wm)}
 
 
 def warn_payroll_timing(db: Session, s: Settings, sheets: List[Sheet]) -> List[str]:

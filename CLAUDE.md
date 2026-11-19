@@ -99,12 +99,13 @@ A weekend day that is also a holiday counts in HL121 only (never HL130).
   not per team.
 - **Where intervention details are recorded**:
   - *Experts*: on the on-call grid (Intervention checkbox → double rate, Incident #, Comment).
-  - *Non-experts*: **only on the overtime sheet** (hours, incident #, description). Their on-call grid has no
+  - *Non-experts*: **only on the overtime sheet** (hours, ServiceNow #, description). Their on-call grid has no
     Incident/Comment/Intervention inputs (the server ignores such fields); the Intervention column shows read-only the overtime
     hours logged on each on-call day, linking to the overtime sheet.
   - Overtime entries are **automatically flagged as on-call interventions** when their date is a booked on-call day
     (`workflow.oncall_dates`, any sheet status, across months). Detected when the entry is added and **re-detected at
     submission** (`recompute_overtime`). The form shows a live "on-call day" hint (`data-oncall-dates`).
+- **Overtime grid** (`/overtime/<y>/<m>`, `POST /overtime/<y>/<m>/save`, `workflow.save_overtime_rows`): the page shows a compact table with **one row per day** (date, From, To, [Comp.], ServiceNow #, Description of Intervention) from the oldest declarable day to today; "+" (JS) adds an extra row for another session the same day, "✕" clears a row. Save applies all rows at once, all or nothing: blank row = nothing (or deletes its saved entry), changed row = replaced, unchanged = kept, unposted entries untouched. It edits the latest sheet when draft/rejected, opens a supplementary sheet after an approval, and is hidden (read-only tables) while the sheet is submitted. `POST /overtime/entries` (single entry) remains as a plain endpoint. The overtime label for the ticket field is "ServiceNow #" (field `incident_ref`; on-call still says Incident #).
 - **Overtime entry** = date + start/end time in **15-minute steps** (`OVERTIME_STEP_MINUTES`, default 15, so the minimum
   entry is 15 min). The time fields are text inputs with a `<datalist>` of suggestions: the user may pick one or **type** it
   (`08:45`, `8.45`, `8h45`, `0845`, `8`; `calendar_utils.parse_hhmm` is tolerant, JS normalises to HH:MM on blur; `24:00` allowed
@@ -113,8 +114,8 @@ A weekend day that is also a holiday counts in HL121 only (never HL130).
   are computed; night window `NIGHT_START`/`NIGHT_END` (default 22:00–06:00). An entry crossing midnight is **split
   automatically** into one entry per calendar day (refused if the second part falls in another month: the user enters it in the
   next month's sheet). Entries of one user may not overlap. No future dates. End `24:00`/`00:00` = end of day.
-- **Weekend/holiday overtime** must be on an on-call day (detected automatically) or ticked "pre-approved by manager";
-  submission is refused otherwise.
+- **Weekend/holiday overtime** needs no pre-approval (the former "pre-approved" tick and its submission check were removed in 1.18.0;
+  the unused `overtime_entries.preapproved` column stays in the schema and in the signature digest so old signatures stay valid).
 - **Back-dated overtime**: employees may log overtime for any day up to `OVERTIME_LOOKBACK_MONTHS` (default 12) back. The entry
   goes to the sheet of its own work month. If that month's sheet is draft/rejected → added to it; submitted → refused (withdraw
   first); **approved → a supplementary sheet** (`sheets.seq` = 2, 3…) is opened for that month and goes through the normal
@@ -165,7 +166,7 @@ approved ──reopen (admin only, audited, latest sheet of the month only)─�
 - **Navigation** (`base.html`): Dashboard, On-call, Overtime, Approvals, Statistics (managers/admin; `/team`, `access.can_view_team`),
   Payroll (procurement/admin), **User Guide** (everyone, adapts to role and team: no on-call parts for overtime-only teams, a "For managers" section for managers/admins; last item of the nav, just before Admin; styled as a lighter purple tab with a border, `.guide-link`), then **Admin on the right, just before the user block**.
 - **Month sync**: the month last viewed on the on-call or overtime page is kept in the session (`remember_month`); the nav links
-  `/oncall` and `/overtime` open that month (else the current one). A "Current month" button returns to today's month.
+  `/oncall` and `/overtime` open that month (else the current one). A "Go to Current Month" button returns to today's month.
 - **Approver = the direct line manager, any manager above them in the chain (skip-level approval, `access.is_above`), or an admin.**
   Nobody approves their own sheet; peers and people outside the chain cannot. The Approvals list and the dashboard counter of a
   manager cover everyone below them (`subordinate_ids`); the audit entry carries `skip_level: true` when the approver is not the
@@ -193,6 +194,7 @@ approved ──reopen (admin only, audited, latest sheet of the month only)─�
   the sheet meta), an audit entry `payroll_sent`, in-app notices to the employees (and e-mail), and notices to submitters still
   waiting ("paid with the following month at the earliest"). A sent sheet cannot be reopened.
 - **Notification bell** (`bell.py`, `<details class="bell">` in `base.html`, left of the user name, works without JS; `app.js` closes it on outside click/Escape): lists unread notices (dismissable), requests (managers/admins: sheets waiting for approval, linking to Approvals), the user's rejected sheets with the comment, and sheets approved in the last 14 days. The red badge counts what needs attention (unread notices + approval request + rejected sheets); approvals are informational. The banners at the top of pages remain. The Admin nav button is dark red (`--burgundy` tokens).
+- **Payroll deadline box** (`workflow.cutoff_banner`, `.deadline-box` in the `base.html` header, between the nav/Admin and the user block, hidden ≤ 1100 px): "Payroll Deadline: DD/MM/YYYY" = the Finance cut-off that applies today to last month's work (first open payroll period whose cut-off has not passed, via `expected_period` + `cutoff_rule`); red when ≤ 3 days left; the tooltip gives days left and, when last month's own cut-off has passed, "paid with <month>".
 - **Notices** (`notifications` table, shown as banners at the top of every page until dismissed, `POST /notices/<id>/read`,
   owner only; e-mail too when SMTP is configured): late approval (`workflow.decide`: "paid with <month>, not <work month>"),
   late submission / logging for a period past its cut-off or closed (`workflow.timing_message`, `warn_payroll_timing`; on-time
@@ -427,7 +429,7 @@ The JS (`static/app.js`) has no automated tests; static assets are excluded from
   `.local.env`, `reports/`). Run `../sonar/scan.sh .` from the repo root.
 - In this repo: `sonar-project.properties` (project key `timelog`) and `scripts/coverage.sh` (pytest + coverage → `app/coverage.xml`
   with repo-relative paths), which `scan.sh` runs first. `.scannerwork/` and `app/coverage.xml` are git-ignored.
-- Current result: **0 issues, 0 hotspots**, quality gate passed.
+- Current result (1.18.5, via `../security-stack/stack.sh scan ../timelog`): **0 issues, 0 hotspots**, quality gate passed.
 - Template rules that keep the scan clean: every input has an `id` + `<label for>` (use `.sr-only` when the label is not displayed),
   `<th scope="col|row">`, totals rows use `<td>` (not `<th>`), no Jinja `{% if %}` blocks inside an HTML start tag (render the
   attribute unconditionally), JSON in attributes via `|tojson` inside **single quotes**, no `autofocus`.
@@ -477,10 +479,10 @@ The JS (`static/app.js`) has no automated tests; static assets are excluded from
 
 ## 9. Current state
 
-- Version **1.17.0** (sortable users table, tidier bulk-edit panel; 1.16.0: bulk edit: Management flag and reload from the directory; 1.15.0: Management role, approval only; 1.14.0: guide and documentation shortened, table-style edit-user form, Admin › Submissions cleanup, header notification bell, dark-red Admin button; 1.13.0: cut-off calendar keyed by cut-off month, per-user theme toggle; 1.12.0: automatic dark mode following the OS setting; the Employee ID attribute mapping, field and export column are removed; the unused `users.employee_id` column stays in the schema for existing databases; 1.11.4: LDAP *Test connection* now reports a failed search (result code, message, base, filter) instead of "0 entries"; 1.11.3: RHEL installer deploys to `/opt/timelog` and upgrades in place; 1.11.2: LDAP connections no longer follow AD referrals, `auto_referrals=False`, which broke user lookups from a domain-root search base; 1.11.1: data in bind-mounted `db-data/` and `backups/` folders instead of Docker volumes; 1.11.0: prepare LDAP users in advance; on top of 1.10.0: teams panel, bulk user edit, cut-off calendar, payroll-check block). 135 pytest tests pass on SQLite; the backup and restore tests also pass on PostgreSQL 16. SonarQube (0 issues,
+- Version **1.18.5** (opentelemetry-api 1.45.2, Sonar clean-up; 1.18.4: security review: grid row cap, echoed input cut; 1.18.3: payroll deadline box in the header; 1.18.2: payroll deadline on every page; 1.18.1: review fixes to the overtime grid save; 1.18.0: monthly overtime grid, ServiceNow # label, pre-approval removed; 1.17.0: sortable users table, tidier bulk-edit panel; 1.16.0: bulk edit: Management flag and reload from the directory; 1.15.0: Management role, approval only; 1.14.0: guide and documentation shortened, table-style edit-user form, Admin › Submissions cleanup, header notification bell, dark-red Admin button; 1.13.0: cut-off calendar keyed by cut-off month, per-user theme toggle; 1.12.0: automatic dark mode following the OS setting; the Employee ID attribute mapping, field and export column are removed; the unused `users.employee_id` column stays in the schema for existing databases; 1.11.4: LDAP *Test connection* now reports a failed search (result code, message, base, filter) instead of "0 entries"; 1.11.3: RHEL installer deploys to `/opt/timelog` and upgrades in place; 1.11.2: LDAP connections no longer follow AD referrals, `auto_referrals=False`, which broke user lookups from a domain-root search base; 1.11.1: data in bind-mounted `db-data/` and `backups/` folders instead of Docker volumes; 1.11.0: prepare LDAP users in advance; on top of 1.10.0: teams panel, bulk user edit, cut-off calendar, payroll-check block). 135 pytest tests pass on SQLite; the backup and restore tests also pass on PostgreSQL 16. SonarQube (0 issues,
   0 hotspots, gate passed) and Dependency-Track (0 findings) re-run clean on this version.
-- Latest offline package: `dist/timelog-1.17.0-offline-rhel9-amd64.zip` (+ `.sha256`, **without** the Docker RPMs: `INCLUDE_DOCKER_RPMS=0`), built from the 1.17.0 sources after
-  the tests passed (SonarQube / Dependency-Track last run on 1.11.0; 1.11.2 changes one line of `ldap_auth.py`). Older packages in `dist/` (1.16.0, 1.15.0, 1.14.0, 1.13.0, 1.3.1, 1.4.0, 1.7.0, 1.9.0, 1.10.0, 1.11.0, 1.11.1, 1.11.2, 1.11.3, 1.11.4, 1.11.5, 1.12.0) are obsolete.
+- Latest offline package: `dist/timelog-1.18.5-offline-rhel9-amd64.zip` (+ `.sha256`, **without** the Docker RPMs: `INCLUDE_DOCKER_RPMS=0`), built from the 1.18.5 sources after
+  the tests passed (SonarQube / Dependency-Track last run on 1.11.0; 1.11.2 changes one line of `ldap_auth.py`). Older packages in `dist/` (1.18.4, 1.18.1, 1.17.0, 1.16.0, 1.15.0, 1.14.0, 1.13.0, 1.3.1, 1.4.0, 1.7.0, 1.9.0, 1.10.0, 1.11.0, 1.11.1, 1.11.2, 1.11.3, 1.11.4, 1.11.5, 1.12.0) are obsolete.
 - The local Docker instance holds no demo users: only `admin` and `tuser` (admin). Demo data for screenshots lives in a throwaway
   SQLite database, never in the local stack.
 - **Verified**: image build; the full stack (nginx HTTPS + app + PostgreSQL 16, all healthy); HTTP→HTTPS redirect; every page for

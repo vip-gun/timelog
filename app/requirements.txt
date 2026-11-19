@@ -21,7 +21,7 @@ et_xmlfile==2.0.0
 h11==0.16.0
 idna==3.20
 MarkupSafe==3.0.4
-opentelemetry-api==1.45.1
+opentelemetry-api==1.45.2
 psycopg-binary==3.3.6
 pyasn1==0.6.5
 pycparser==3.12
