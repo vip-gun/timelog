@@ -52,10 +52,12 @@ def _dataset_rows(db: Session):
 
 
 def _split_all(db: Session, parsed: ooh.Parsed):
-    """Split the interventions into Experts and Officers, matching "Assigned to" to Timelog users by name (the Expert
-    flag decides); the Timelog name replaces the spelling of the file, so "bob expert", "Expert, Bob" and "bob" are one
+    """Split the interventions into Experts and Officers, matching "Assigned to" to Timelog users by name. **Experts** are
+    the Expert-flagged users plus managers (anyone with direct reports) and Management accounts, who also do
+    out-of-hours changes; everybody else is an Officer; the Timelog name replaces the spelling of the file, so "bob expert", "Expert, Bob" and "bob" are one
     person. Returns ({group: Parsed}, names that match no single user)."""
     idx, known, unmatched = user_index(db), {}, []
+    manager_ids = set(db.scalars(select(User.manager_id).where(User.manager_id.is_not(None)).distinct()))
     keep = {key: [] for key in GROUPS}
     for item in parsed.items:
         if item.person not in known:
@@ -65,7 +67,7 @@ def _split_all(db: Session, parsed: ooh.Parsed):
                 unmatched.append(item.person)
         user = known[item.person]
         if user is not None:
-            key = "experts" if user.is_expert else "officers"
+            key = "experts" if (user.is_expert or user.is_management or user.id in manager_ids) else "officers"
             keep[key].append(ooh.Intervention(item.row, user.full_name, item.description, item.start, item.end, item.number))
     parts = {k: ooh.Parsed(items=v, skipped=parsed.skipped if k == "experts" else [], rows=parsed.rows)
              for k, v in keep.items()}

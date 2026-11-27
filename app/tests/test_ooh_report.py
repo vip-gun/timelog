@@ -246,3 +246,25 @@ def test_change_request_number_is_read_listed_saved_and_editable(browser, db, us
     db.expire_all()
     assert db.get(type(row), row.id).number == "CHG42"
     assert "CHG42" in b.get(f"/analysis/view?ids={ds.id}").text
+
+
+def test_headers_are_not_case_sensitive():
+    for header in (["NUMBER", "SHORT DESCRIPTION", "ASSIGNED TO", "PLANNED START DATE", "PLANNED END DATE"],
+                   ["number", "short_description", "assigned_to", "planned start date", "Planned  End  Date:"],
+                   ["Number", "sHoRt DeScRiPtIoN", "assigned To", "planned START date", "PLANNED end date"]):
+        p = ooh.parse_file(_xlsx([("a", "Bob Test", "2026-03-07 10:00:00", "2026-03-07 12:00:00")], header=header), "x.xlsx")
+        assert len(p.items) == 1 and p.items[0].number == "T1" and p.items[0].person == "Bob Test"
+    csv = "﻿SHORT DESCRIPTION;ASSIGNED TO;PLANNED START DATE;PLANNED END DATE;NUMBER\nx;Bob;2026-03-07 10:00:00;2026-03-07 11:00:00;CHG1\n"
+    assert ooh.parse_file(csv.encode("utf-8"), "x.csv").items[0].number == "CHG1"
+
+
+def test_managers_are_bundled_with_the_experts(browser, db, users):
+    b = browser("head")
+    rows = [("a", "Bob Test", "2026-03-07 10:00:00", "2026-03-07 12:00:00"),            # Expert
+            ("b", "Manager Test", "2026-03-07 10:00:00", "2026-03-07 13:00:00"),        # manager (has reports)
+            ("c", "Alice Test", "2026-03-07 10:00:00", "2026-03-07 14:00:00")]          # Officer
+    page = _upload(b, rows).text
+    experts = page.split('id="pane-experts"')[1].split('id="pane-officers"')[0]
+    officers = page.split('id="pane-officers"')[1]
+    assert "Bob Test" in experts and "Manager Test" in experts and "Alice Test" not in experts
+    assert "Alice Test" in officers and "Manager Test" not in officers

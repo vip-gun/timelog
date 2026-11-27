@@ -51,6 +51,38 @@ server {
         proxy_read_timeout 60s;
     }
 
+    # File uploads need more than the 2 MB default: the Analysis export (app limit 10 MB), Import History (several workbooks,
+    # 15 MB each) and the backup upload (app limit 200 MB). The application enforces its own limits and shows a message.
+    location ~ ^/(analysis|admin/import)$ {
+        client_max_body_size 100m;
+        proxy_pass http://timelog_app;
+        proxy_http_version 1.1;
+        proxy_hide_header X-Content-Type-Options;
+        proxy_hide_header X-Frame-Options;
+        proxy_hide_header Referrer-Policy;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host  $host;
+        proxy_read_timeout 120s;
+    }
+
+    location = /admin/backup/upload {
+        client_max_body_size 210m;
+        proxy_pass http://timelog_app;
+        proxy_http_version 1.1;
+        proxy_hide_header X-Content-Type-Options;
+        proxy_hide_header X-Frame-Options;
+        proxy_hide_header Referrer-Policy;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host  $host;
+        proxy_read_timeout 120s;
+    }
+
     location /static/ {
         proxy_pass http://timelog_app;
         expires 1h;

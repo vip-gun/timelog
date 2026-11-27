@@ -89,7 +89,9 @@ class Report:
 
 # ---------------------------------------------------------------- reading
 def _norm(h) -> str:
-    return " ".join(str(h or "").strip().lower().replace("_", " ").split())
+    """Header names are matched ignoring case, spacing, underscores/hyphens, a BOM and a trailing colon."""
+    text = str(h or "").replace("\ufeff", " ").replace("\xa0", " ").lower().replace("_", " ").replace("-", " ")
+    return " ".join(text.split()).strip(" :")
 
 
 def _map_header(header: List) -> Dict[str, int]:
