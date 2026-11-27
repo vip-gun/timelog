@@ -128,6 +128,36 @@ class Holiday(Base):
     name: Mapped[str] = mapped_column(String(128))
 
 
+class OohDataset(Base):
+    """A saved out-of-hours intervention dataset (e.g. one ServiceNow export); see CLAUDE.md, Out-of-Hours report."""
+
+    __tablename__ = "ooh_datasets"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(128))
+    source_filename: Mapped[str] = mapped_column(String(256), default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    created_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    created_by: Mapped[Optional["User"]] = relationship(foreign_keys=[created_by_id])
+    interventions: Mapped[List["OohIntervention"]] = relationship(
+        back_populates="dataset", cascade="all, delete-orphan", order_by="OohIntervention.start")
+
+
+class OohIntervention(Base):
+    __tablename__ = "ooh_interventions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    dataset_id: Mapped[int] = mapped_column(ForeignKey("ooh_datasets.id", ondelete="CASCADE"), index=True)
+    number: Mapped[str] = mapped_column(String(64), default="")      # ServiceNow change request number
+    person: Mapped[str] = mapped_column(String(128))
+    description: Mapped[str] = mapped_column(String(200), default="")
+    start: Mapped[dt.datetime] = mapped_column(DateTime)
+    end: Mapped[dt.datetime] = mapped_column(DateTime)
+
+    dataset: Mapped[OohDataset] = relationship(back_populates="interventions")
+
+
 class OvertimeRule(Base):
     """TIL credit multipliers per day type (CLAUDE.md §1.2)."""
 

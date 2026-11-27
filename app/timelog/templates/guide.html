@@ -11,7 +11,7 @@
   {% if oncall_enabled %}<a href="#oncall">Declaring on-call</a>{% endif %}
   {% if not user.is_management %}<a href="#overtime">Declaring overtime</a>
   <a href="#submit">Submitting</a>{% endif %}
-  {% if is_manager or user.is_admin %}<a href="#manager">For managers</a>{% endif %}
+  {% if is_manager or user.is_admin %}<a href="#manager">For managers</a><a href="#ooh">Analysis</a>{% endif %}
   <a href="#late">Deadlines</a>
   <a href="#faq">Problems</a>
 </nav>
@@ -34,6 +34,7 @@
     <li>Your manager <strong>approves</strong> or <strong>rejects</strong> with a comment. If rejected, fix and submit again.</li>
   </ol>
   <p>The <a href="/">Dashboard</a> shows the status of your last six months. Only you and the managers above you see your sheets.</p>
+  <img class="guide-shot" src="/static/guide/dashboard.png?v={{ build.asset_tag }}" width="1950" height="925" alt="The dashboard: the month in figures and the status of the last six months" loading="lazy">
   {% endif %}
   {% if not oncall_enabled %}
   <div class="callout"><span class="callout-title">Overtime only</span>Your team <strong>{{ user.team }}</strong> does overtime only: there is no On-call page for you.</div>
@@ -47,7 +48,7 @@
 <section class="card docs" id="oncall">
   <h2>Declaring on-call</h2>
   <p>Open <a href="/oncall">On-call</a>. Days are grouped by rotation week; a week runs from <strong>{{ week_start_name }} at {{ week_handover }}</strong> to the following {{ week_end_name }}. Days are booked whole.</p>
-  <img class="guide-shot" src="/static/guide/oncall.png?v={{ build.asset_tag }}" width="2040" height="1500" alt="The on-call page: one month grouped by rotation week, with the week switch on the left and a tick box per day">
+  <img class="guide-shot" src="/static/guide/oncall.png?v={{ build.asset_tag }}" width="1950" height="1175" alt="The on-call page: one month grouped by rotation week, the week switch on the left, the booked week highlighted, and the stipend total above" loading="lazy">
   <ul>
     <li><strong>Whole week</strong>: use the week switch (books all 7 days).</li>
     <li><strong>Single days</strong>: tick the days.</li>
@@ -70,7 +71,7 @@
 <section class="card docs" id="overtime">
   <h2>Declaring overtime</h2>
   <p>Open <a href="/overtime">Overtime</a> and use the <strong>Log overtime</strong> grid: <strong>one row per day</strong>. Fill in the days you worked, leave the others empty, then <strong>Save overtime</strong>. Worked twice in a day? Use <strong>+</strong> on that day to add a row.</p>
-  <img class="guide-shot" src="/static/guide/overtime.png?v={{ build.asset_tag }}" width="2040" height="1500" alt="The overtime page: the entry form above the table of entries with day and night hours per day type">
+  <img class="guide-shot" src="/static/guide/overtime.png?v={{ build.asset_tag }}" width="1950" height="1038" alt="The overtime page: one row per day with From, To, compensation, ServiceNow number and description" loading="lazy">
   <table class="table">
     <thead><tr><th scope="col">Field</th><th scope="col">What to enter</th></tr></thead>
     <tbody>
@@ -113,6 +114,7 @@
     {% if features.signature %}<li><strong>Sign</strong> (draw or upload a picture) and tick the confirmation. <em>Remember this signature</em> pre-fills it next time; <em>Forget it</em> removes it.</li>{% endif %}
     <li>Press <strong>Submit</strong>.</li>
   </ol>
+  <img class="guide-shot" src="/static/guide/submit.png?v={{ build.asset_tag }}" width="1950" height="875" alt="Under the entries: the totals per day type, then the submit panel with a comment box" loading="lazy">
   <p class="help">All or nothing: if one sheet has a problem, nothing is sent and the page says what to fix. Until it is decided, <strong>Withdraw submission</strong> brings it back to draft.</p>
   <table class="table">
     <thead><tr><th scope="col">Status</th><th scope="col">Meaning</th><th scope="col">What you do</th></tr></thead>
@@ -134,17 +136,35 @@
   <p>You review everyone below you, including their reports (skip-level, e.g. when their manager is away). Nobody approves their own sheet.</p>
   <ol>
     <li>Open <a href="/approvals">Approvals</a> (oldest first), check the sheet, then <strong>Approve</strong>, or <strong>Reject</strong> with a comment.</li>
-    <li><a href="/team">Statistics</a> shows your team's status and totals (no downloads: Finance reports come from IT Procurement).</li>
+    <li><a href="/team">Statistics</a> has a menu on the left: <strong>Overview</strong> (your team's status and totals), then charts in two tabs: <strong>Experts</strong> (on-call days with an intervention) and <strong>Officers</strong> (overtime hours logged), switched from a menu on the left, each per person and day type with the monthly evolution and a trend per person. Choose the number of months and whether submitted sheets count or only approved ones. No downloads: Finance reports come from IT Procurement.</li>
+    <li><a href="/analysis">Analysis</a>: upload a ServiceNow export to see each person's out-of-hours intervention hours and their monthly trend (details below).</li>
   </ol>
+  <img class="guide-shot" src="/static/guide/approvals.png?v={{ build.asset_tag }}" width="1950" height="675" alt="The Approvals page: the sheets waiting for your decision, with a Review button" loading="lazy">
   <ul>
     <li><strong>On-call conflicts</strong>: a red banner marks days another employee also has on a submitted or approved sheet. Approval is not blocked; you decide.</li>
     <li><strong>Late approval</strong> (after the cut-off): paid with the next payroll; the employee is told.</li>
     <li>Some teams do overtime only; you will see no on-call sheets for them{% if user.is_admin %} (<a href="/admin/teams">Teams</a>){% endif %}.</li>
   </ul>
-  {% if user.is_admin %}<p class="help">Administrator reference: <a href="/admin/docs">Admin › Documentation</a>.</p>{% endif %}
 </section>
 {% endif %}
 
+{% if is_manager or user.is_admin %}
+<section class="card docs" id="ooh">
+  <h2>Analysis</h2>
+  <p>For managers and administrators. Open <a href="/analysis">Analysis</a> and upload the ServiceNow export (<code>.xlsx</code> or <code>.csv</code>, up to 10 MB). The first row must contain the columns <strong>Short description</strong>, <strong>Assigned to</strong>, <strong>Planned start date</strong> and <strong>Planned end date</strong>; dates are <code>YYYY-MM-DD hh:mm:ss</code>. The file is analysed in memory and is <strong>not stored</strong> unless you tick <strong>Save this data as a dataset</strong>.</p>
+  <img class="guide-shot" src="/static/guide/ooh.png?v={{ build.asset_tag }}" width="1950" height="1563" alt="The Analysis page: the Experts and Officers tabs, totals per day type and stacked bars of hours per person" loading="lazy">
+  <ul>
+    <li>One export can hold both populations: you upload it once and the results come in two tabs on the left, <strong>Experts</strong> and <strong>Officers</strong>. People are matched to Timelog users by name (the Expert flag decides); names that match no single user are listed and left out of both.</li>
+    <li><strong>Click a chart</strong> to open the list of items behind it in a popup (the Number column is the ServiceNow change request number). The same works on the Statistics charts.</li>
+    <li><strong>Business day</strong>: only the hours outside the working hours count (default 09:00–18:00, editable on the form). <strong>Saturday</strong>, <strong>Sunday</strong> and <strong>public holiday</strong>: every hour counts. A holiday that falls on a weekend counts as a holiday.</li>
+    <li>An intervention running past midnight is split per day. Overlapping interventions of the same person are merged, so no hour is counted twice.</li>
+    <li>Rows without assignee or with unreadable or inverted dates are skipped and listed; interventions longer than 24 h are flagged so you can check the planned dates.</li>
+    <li><strong>Saved datasets</strong>: tick <em>Save this data as a dataset</em> to keep an analysis. Saved datasets are listed under the upload form: tick one or several and press <em>Visualise selected</em> to see them together (the same intervention saved twice is counted once). Open a dataset to rename it, correct, add or delete interventions, or delete it. Only the person who saved a dataset, or an administrator, can change it; other managers can view it.</li>
+    <li>The page shows totals, hours per person by day type, the monthly evolution of the team, one trend chart per person on a common scale, and a person × month table.</li>
+  </ul>
+</section>
+
+{% endif %}
 <section class="card docs" id="late">
   <h2>Deadlines</h2>
   <p>A sheet <strong>approved</strong> by the cut-off date of its month is paid with that month. Later approvals are <strong>late claims</strong>, paid with the next payroll (you are notified; nothing is lost). Submit early so your manager has time.</p>

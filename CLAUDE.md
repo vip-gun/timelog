@@ -4,7 +4,7 @@ Web application to declare **on-call duty** and **overtime**, have them validate
 aggregated monthly view for Finance/Payroll. It runs in Docker containers on-premise, without internet access.
 
 This file is the single source of truth for business rules and design decisions.
-Update it whenever a rule or decision changes (and keep README.md and Admin › Documentation in step).
+Update it whenever a rule or decision changes (and keep README.md, the User Guide and Admin › Documentation in step).
 
 ---
 
@@ -105,6 +105,10 @@ A weekend day that is also a holiday counts in HL121 only (never HL130).
   - Overtime entries are **automatically flagged as on-call interventions** when their date is a booked on-call day
     (`workflow.oncall_dates`, any sheet status, across months). Detected when the entry is added and **re-detected at
     submission** (`recompute_overtime`). The form shows a live "on-call day" hint (`data-oncall-dates`).
+- **History import / backfill** (Admin › Import History, `GET|POST /admin/import`, `history_import.py`, `templates/admin/import.html`, admin only): upload the **on-call** and/or **overtime workbook(s)** (several files per kind, up to 40; the Payroll page gives one per month; **a workbook may also hold one sheet per month**, every sheet is read and its month comes from the dates in its header, not from its name) in the layout of the Finance exports (`export_finance.py`; tabs = work months; on-call: dates in row 3 D..AH, one row per employee, "- Incidents/calls" row = Expert intervention, rates from the pricing block; overtime: month in A2, dates in row 2, last name / first name / Paid-TIL, hours per day, night hours AN..AQ, TIL credit AR/AX; "(late)" tabs are skipped with a warning). Names are matched to users (first+last, last+first, display name, username; unknown or ambiguous = skipped and listed). Each tab/employee becomes a sheet **already approved and marked sent to Finance** (payroll period = work month, `payroll_runs` created or extended, decided_by = the admin, comment "Imported from a Finance workbook (history)", no notices/e-mails); existing sheets of that user/kind/month are never touched; Management users, Expert overtime and teams without on-call are skipped. On-call: day type from the holiday table, amount doubled for an Expert incident. **Overtime times are unknown**: each day is one entry from 00:00 of the length of the hours (description says "times unknown"); night hours per day type and the TIL credit are spread over that type's days so the sheet totals equal the workbook. A **dry run** (default on) shows the result without saving; one audit entry `history_import`. Closed periods stay closed, so the imported months can no longer receive new approvals.
+- **Statistics charts** (`/team`, `stats_charts.py`, `templates/_chart_blocks.html`, shared with the Analysis page): a **vertical menu on the left with three sub-tabs** (`?group=overview|experts|officers`, default Overview; `non-experts` is accepted as an alias for officers): **Overview** (the four stat tiles, the "Work done" table and the late claims), then **Experts** and **Officers** with the charts. The month navigation and the months / sheets / team filters sit above the menu and apply to every tab. The chart tabs are built from what is **logged in Timelog** for the people in the viewer's scope (team filter applies): **Officers** tab: **overtime hours** per person by day type (bars + table, monthly evolution, per-person trend on a shared scale, person x month table), **Experts** tab: **on-call days with an intervention** (Experts tick Intervention on the on-call sheet; a non-Expert's intervention is an overtime entry, so it is in the Officers tab; on-call days without an intervention are not charted), in days. Window = last 6/12/24 months ending at the selected month; sheets = submitted + approved, or approved only (`months`, `status` query parameters); drafts and rejected sheets are left out; by work month of the sheet. Charts are inline SVG (no JS, no inline style); every chart has **labelled axes** (titles "Hours" or "Days" and "Month" on the column charts, "Hours"/"Days" with a 0-100 % scale and "Person" on the bar chart).
+- **Analysis (out-of-hours report)** (`/analysis`, `/ooh` redirects with 301; `routes/ooh.py`, `ooh_report.py`, `templates/ooh.html`, nav "Analysis" after Statistics; managers and admins only, others 404): upload a **ServiceNow export** (`.xlsx` or `.csv`, ≤ 10 MB, ≤ 50 000 rows) with the columns *Short description, Assigned to, Planned start date, Planned end date* (`YYYY-MM-DD hh:mm:ss` text or real Excel datetimes; header names case-insensitive). **Not stored unless asked**: the file is analysed in memory; tick "Save this data as a dataset" to keep it (see below). Each intervention is split per calendar day and classified with the holiday table (holiday wins over weekend): **business day = only the hours outside the working window** (form fields, default 09:00-18:00), Saturday / Sunday / public holiday = every hour. Overlapping interventions of one person are merged (no double count); rows without assignee/valid dates/end > start are skipped and listed; interventions > 24 h are flagged. **One upload, two result panes, Experts and Officers** (Officers = non-Experts): the export holds both populations, so there is **no per-tab upload**; the results come back in two panes switched from a **vertical menu on the left** (JS-free, `:target`; first pane shown by default). "Assigned to" is matched to Timelog users by name (`history_import.user_index/_find`: first+last, last+first, display name, username); the `users.is_expert` flag picks the pane (the Timelog name replaces the spelling in the file, so variants merge), names matching no single user are listed in a banner and left out of both. The optional column **Number** (ServiceNow change request number; aliases "Change request number") is read as well, stored with saved datasets (`ooh_interventions.number`, editable on the dataset page) and shown with every item. **Clicking a chart opens the list of items behind it in a popup** (a `<button data-dialog>` around each chart opens a `<dialog class="chart-dialog">`, wired in `app.js`: Close button, Esc and a click on the backdrop close it; the bars and the monthly chart list all items of the pane, each per-person trend chart that person's items; first 500 shown). Statistics charts do the same with the logged overtime entries (ServiceNow # = `incident_ref`) or expert intervention days. A banner at the top states the **required columns** (Short description, Assigned to, Planned start date, Planned end date, `YYYY-MM-DD hh:mm:ss`). Saving a dataset stores **all** rows of the file; the split is applied when visualising (also for `/analysis/view?ids=`, which shows both panes). Output, all server-rendered inline SVG/tables (no JS, no inline style, dark-mode tokens `--t-W/SAT/SUN/H`, `--heat-*`): KPI tiles, stacked bars + table per person, monthly team columns, small multiples per person on one shared scale, person × month heat table, detail and skipped rows. Local time, no time-zone handling.
+  **Saved datasets** (tables `ooh_datasets` + `ooh_interventions`, included in Admin › Backup automatically): saving stores the valid rows (not the skipped ones) with a name, source file name, creator and time. `/analysis` lists them; tick several and **Visualise selected** (`/analysis/view?ids=`) to combine them (identical or overlapping intervals of one person are merged, so re-saved exports do not double count). `/analysis/datasets/<id>` shows the rows (100 per page, person filter) and, **for the creator or an administrator only** (others are read-only; a non-owner POST gets 404), allows rename, edit/delete/add a row (start/end `YYYY-MM-DD hh:mm:ss`, end after start) and delete the dataset (typed `DELETE`). Viewing is for managers and administrators. Audited: `ooh_save`, `ooh_rename`, `ooh_row_add|update|delete`, `ooh_delete`.
 - **Overtime grid** (`/overtime/<y>/<m>`, `POST /overtime/<y>/<m>/save`, `workflow.save_overtime_rows`): the page shows a compact table with **one row per day** (date, From, To, [Comp.], ServiceNow #, Description of Intervention) from the oldest declarable day to today; "+" (JS) adds an extra row for another session the same day, "✕" clears a row. Save applies all rows at once, all or nothing: blank row = nothing (or deletes its saved entry), changed row = replaced, unchanged = kept, unposted entries untouched. It edits the latest sheet when draft/rejected, opens a supplementary sheet after an approval, and is hidden (read-only tables) while the sheet is submitted. `POST /overtime/entries` (single entry) remains as a plain endpoint. The overtime label for the ticket field is "ServiceNow #" (field `incident_ref`; on-call still says Incident #).
 - **Overtime entry** = date + start/end time in **15-minute steps** (`OVERTIME_STEP_MINUTES`, default 15, so the minimum
   entry is 15 min). The time fields are text inputs with a `<datalist>` of suggestions: the user may pick one or **type** it
@@ -114,8 +118,8 @@ A weekend day that is also a holiday counts in HL121 only (never HL130).
   are computed; night window `NIGHT_START`/`NIGHT_END` (default 22:00–06:00). An entry crossing midnight is **split
   automatically** into one entry per calendar day (refused if the second part falls in another month: the user enters it in the
   next month's sheet). Entries of one user may not overlap. No future dates. End `24:00`/`00:00` = end of day.
-- **Weekend/holiday overtime** needs no pre-approval (the former "pre-approved" tick and its submission check were removed in 1.18.0;
-  the unused `overtime_entries.preapproved` column stays in the schema and in the signature digest so old signatures stay valid).
+- **Weekend/holiday overtime** needs no pre-approval. The unused `overtime_entries.preapproved` column stays in the schema and in the
+  signature digest so old signatures stay valid.
 - **Back-dated overtime**: employees may log overtime for any day up to `OVERTIME_LOOKBACK_MONTHS` (default 12) back. The entry
   goes to the sheet of its own work month. If that month's sheet is draft/rejected → added to it; submitted → refused (withdraw
   first); **approved → a supplementary sheet** (`sheets.seq` = 2, 3…) is opened for that month and goes through the normal
@@ -164,9 +168,9 @@ approved ──reopen (admin only, audited, latest sheet of the month only)─�
   overtime) nothing is submitted. The submit panel is on both pages; the on-call page's "Save & submit" first saves the grid.
   Withdraw / reject / approve stay per sheet.
 - **Navigation** (`base.html`): Dashboard, On-call, Overtime, Approvals, Statistics (managers/admin; `/team`, `access.can_view_team`),
-  Payroll (procurement/admin), **User Guide** (everyone, adapts to role and team: no on-call parts for overtime-only teams, a "For managers" section for managers/admins; last item of the nav, just before Admin; styled as a lighter purple tab with a border, `.guide-link`), then **Admin on the right, just before the user block**.
+  Analysis (managers/admin), Payroll (procurement/admin only), **User Guide** (everyone, adapts to role and team: no on-call parts for overtime-only teams, a "For managers" section for managers/admins; last item of the nav, just before Admin; outlined pill, `.guide-link`), then **Admin on the right, just before the user block**.
 - **Month sync**: the month last viewed on the on-call or overtime page is kept in the session (`remember_month`); the nav links
-  `/oncall` and `/overtime` open that month (else the current one). A "Go to Current Month" button returns to today's month.
+  `/oncall` and `/overtime` open that month (else the current one). A "Go to Current Month" button returns to today's month; the arrows and month title stay on the right and the button sits **just left of the left arrow** (out of the flow), so showing it never moves them.
 - **Approver = the direct line manager, any manager above them in the chain (skip-level approval, `access.is_above`), or an admin.**
   Nobody approves their own sheet; peers and people outside the chain cannot. The Approvals list and the dashboard counter of a
   manager cover everyone below them (`subordinate_ids`); the audit entry carries `skip_level: true` when the approver is not the
@@ -194,14 +198,14 @@ approved ──reopen (admin only, audited, latest sheet of the month only)─�
   the sheet meta), an audit entry `payroll_sent`, in-app notices to the employees (and e-mail), and notices to submitters still
   waiting ("paid with the following month at the earliest"). A sent sheet cannot be reopened.
 - **Notification bell** (`bell.py`, `<details class="bell">` in `base.html`, left of the user name, works without JS; `app.js` closes it on outside click/Escape): lists unread notices (dismissable), requests (managers/admins: sheets waiting for approval, linking to Approvals), the user's rejected sheets with the comment, and sheets approved in the last 14 days. The red badge counts what needs attention (unread notices + approval request + rejected sheets); approvals are informational. The banners at the top of pages remain. The Admin nav button is dark red (`--burgundy` tokens).
-- **Payroll deadline box** (`workflow.cutoff_banner`, `.deadline-box` in the `base.html` header, between the nav/Admin and the user block, hidden ≤ 1100 px): "Payroll Deadline: DD/MM/YYYY" = the Finance cut-off that applies today to last month's work (first open payroll period whose cut-off has not passed, via `expected_period` + `cutoff_rule`); red when ≤ 3 days left; the tooltip gives days left and, when last month's own cut-off has passed, "paid with <month>".
+- **Payroll deadline box** (`workflow.cutoff_banner`, `.deadline-box` in the `base.html` header, between the nav/Admin and the user block, hidden ≤ 1440 px): "Payroll Deadline: DD/MM/YYYY" = the Finance cut-off that applies today to last month's work (first open payroll period whose cut-off has not passed, via `expected_period` + `cutoff_rule`); always in a red shade (`--err-*`), solid red with white text when ≤ 3 days are left; the tooltip gives days left and, when last month's own cut-off has passed, "paid with <month>".
 - **Notices** (`notifications` table, shown as banners at the top of every page until dismissed, `POST /notices/<id>/read`,
   owner only; e-mail too when SMTP is configured): late approval (`workflow.decide`: "paid with <month>, not <work month>"),
   late submission / logging for a period past its cut-off or closed (`workflow.timing_message`, `warn_payroll_timing`; on-time
   submissions only get a flash with the approval deadline), payroll sent, still-waiting after a run.
 - **Finance exports** are per **payroll period** (all approved sheets with that payroll period: regular + late claims) and come in
-  three downloads under **Payroll** (`routes/payroll.py`, IT Procurement or admin only, whole organisation; managers no longer
-  export — their Statistics page has no downloads):
+  three downloads under **Payroll** (`routes/payroll.py`, IT Procurement or admin only, whole organisation; managers have no
+  downloads, their Statistics page is view-only):
   - `/payroll/export/oncall` → `Y<yy>M<mm>_IT_OnCall.xlsx` and `/payroll/export/overtime` → `Y<yy>M<mm>_IT_Overtime.xlsx`
     (`export_finance.py`), in the **layout of the two reference workbooks**: the layouts are sanitized prototype tabs
     `app/timelog/export_templates/{oncall,overtime}_layout.xlsx` (formats, widths, merged cells, conditional formats, fixed headings;
@@ -289,30 +293,22 @@ approved ──reopen (admin only, audited, latest sheet of the month only)─�
   app port is not published outside the Docker network.
 
 ### 6.1 Design system
-- Palette (CSS variables at the top of `static/style.css`; the XLSX export uses the same colours):
+- **Visual identity shared with ResOps** (sibling project `../resource-management`). Palette (CSS variables at the top of `static/style.css`; token names from the first design were kept, the values changed, so `--primary`/`--secondary` are now navy):
 
-| Token | Hex | | Token | Hex |
-|---|---|---|---|---|
-| primary (gold) | `#8F7237` | | secondary (aubergine) | `#4F4059` |
-| primary light | `#9B804A` | | secondary light | `#504159` |
-| primary very light | `#C7B99C` | | secondary very light | `#9D95A3` |
-| primary tint | `#ECEBE5` / `#F3F1EB` | | secondary tint | `#EDEBEE` |
-| background / text / headings | `#F0F0EF` / `#2D3648` / `#1A202C` | | muted / error | `#717D96` / `#C20000` |
+| Token | Light | Dark |
+|---|---|---|
+| primary / secondary / `--primary-solid` (buttons, active pill, checked boxes) | `#2C3E50` navy | `#BDC3C7` light grey (`--on-solid` `#17212B`) |
+| `--highlight` (focus ring, stat-tile mark, Sign Out) | `#F39C12` orange | same |
+| red accent / error | `#E74C3C` / `#B93A2C` | `#EC5B4B` / `#FF8E80` |
+| background / surface / text | `#F3F5F8` / `#FFFFFF` / `#1F2D3A` | `#111820` / `#1A2430` / `#ECF0F4` |
+| success / warning | `#1B7A4B` / `#9A5B00` | `#66D19A` / `#F6B445` |
 
-- Fonts, all SIL OFL and **self-hosted** in `static/fonts/` (latin subset, woff2, licences alongside; no external requests):
-  **Space Grotesk** (headings, brand, month titles), **IBM Plex Sans** 400/500/600 (body), **JetBrains Mono** (figures, stat tiles,
-  badges, table headers, eyebrows, dates/times/incident refs).
-- **Dark mode** (since 1.12.0): automatic by default, from the OS/browser setting (`prefers-color-scheme: dark`); since 1.13.0 each user can force it with the header button (cycles auto → dark → light, `users.theme`, `POST /preferences/theme`, rendered as `<html data-theme>` so there is no flash and no script; strict CSP kept). The dark values exist twice in `style.css` (OS-driven block and `data-theme="dark"` block): edit both. Light values are tokens in `:root`; the dark block at the end of `style.css` (`@media screen and (prefers-color-scheme: dark)`) overrides them. New colours must be tokens (`--surface-2`, `--ok-bg`, `--accent-text` for aubergine text, `--primary-solid` for gold fills under white text), never hard-coded hex. Header, buttons and the login hero keep their brand colours; signature canvas/images stay white; print stays light. `<meta name="color-scheme" content="light dark">` in `base.html`.
-- **Industrial look**: square corners (2 px radius token), flat surfaces with hard 1 px borders, no blur/gradients/glows, hard
-  offset shadow only on toasts, faint engineering grid background, solid aubergine header with a gold bottom rule, uppercase
-  buttons, gold top rule on stat tiles. Motion is short and linear (≤ 0.2 s fade-in of rows/cards, toasts slide 16 px, brief colour
-  flash when an amount changes, 0.4 s count-up); no ripples, orbs, pulses, lifts or scaling. All disabled by
-  `prefers-reduced-motion`. Favicon / brand mark: aubergine square, gold base bar, white square clock face.
-- **The header must stay perfectly static** (user requirement): no entrance animation, **no View Transitions**, fixed height (60 px,
-  nav never wraps), `scrollbar-gutter: stable` + `overflow-y: scroll`, main fonts `<link rel=preload>`ed. Navigation is plain page
-  loads. Static assets are cache-busted with `?v={{ build.asset_tag }}`.
-- The browser tab title and the nav labels are title-cased (`titlecase` Jinja filter in `web.py`: "Timelog - Overtime Aug 2026",
-  "Sign In", "Statistics").
+- Look: **floating rounded white top bar** (`--chrome`, 20 px radius, shadow, 10 px from the edges; logo + name + tagline on the left, nav tabs in a grey pill group with the active tab a filled navy pill, bell/theme/user and an **orange Sign Out button** on the right, as in ResOps), soft rounded cards (16 px) with a soft shadow, 8 px buttons/inputs with an orange focus ring, sentence-case buttons, soft radial gradient background; **no pattern on the app background** (it looked noisy), a login screen with a navy hero (timeline bars + clock art), rounded toasts/banners, pill badges and tags. Brand mark: navy rounded tile with a clock (grey ring, orange hand, red base bar), also the favicon. **System font stack, no web fonts** (the former self-hosted fonts were removed); monospace only for figures/dates/refs.
+- **Dark mode**: automatic from the OS (`prefers-color-scheme: dark`), per-user override with the header button (cycles auto → dark → light, `users.theme`, `POST /preferences/theme`, rendered as `<html data-theme>` so there is no flash and no script; strict CSP kept). The dark values exist twice in `style.css` (OS-driven block and `data-theme="dark"` block): edit both. New colours must be tokens (`--surface-2`, `--ok-bg`, `--accent-text`, `--accent-bg`, `--primary-solid` + `--on-solid`), never hard-coded hex. Signature canvas/images stay white; print stays light. `<meta name="color-scheme" content="light dark">` in `base.html`.
+- **Drop-down fields** (`select`) draw their own chevron (`--chevron` token, data-URI SVG, light and dark values; `appearance: none`, 0.95 rem from the edge, extra right padding), so the arrow never touches the border; keep `background-color` (not the `background` shorthand) on `input/select/textarea` rules or the arrow disappears.
+- Motion is short and linear (≤ 0.2 s fade-in of rows/cards, toasts slide 16 px, brief colour flash when an amount changes, 0.4 s count-up), all disabled by `prefers-reduced-motion`.
+- **The header must stay perfectly static** (user requirement): no entrance animation, **no View Transitions**, fixed height (60 px, nav never wraps), `scrollbar-gutter: stable` + `overflow-y: scroll`. Navigation is plain page loads. Static assets are cache-busted with `?v={{ build.asset_tag }}`. Below 1700 px the header hides the user name and the tagline and tightens the tabs so the nav fits; the payroll deadline box hides ≤ 1440 px. The Admin button stays dark red (`--burgundy`); the User Guide tab is an outlined pill.
+- The browser tab title and the nav labels are title-cased (`titlecase` Jinja filter in `web.py`: "Timelog - Overtime Aug 2026", "Sign In", "Statistics").
 
 ### 6.2 HTTPS / Microsoft PKI
 - nginx terminates TLS with `certs/server.crt` (server cert **+ intermediate chain**, PEM) and `certs/server.key` (unencrypted),
@@ -351,12 +347,13 @@ Without them the footer says "dev build, started <server start time>" (`version.
 for employees: the short version, on-call, overtime, interventions, submitting, statuses, cut-off/late claims, FAQ. It adapts to
 the viewer (Experts get no overtime how-to, teams without on-call get no on-call how-to, the signature step only appears when `signature_required` is on, TIL text follows
 `features.til`) and reads live values (rotation start/handover, time step, night window, look-back, payroll cut-off). It never prints
-rates or amounts (they can be hidden from employees). Two screenshots in `static/guide/` (demo data). Keep it in step with §2/§3 and
-Admin › Documentation (which is the administrator's reference). At ≤ 1240 px the header hides the user name so the admin nav still fits.
+rates or amounts (they can be hidden from employees). Six screenshots in `static/guide/` (dashboard, on-call, overtime, submit panel, approvals, out-of-hours; 1560 px wide viewport at 1.25 scale, fictional demo data). Keep it in step with §2/§3 and
+Admin › Documentation (the administrator's reference). At ≤ 1700 px the header hides the user name so the admin nav still fits.
 
-### 6.5 Admin › Documentation
-`/admin/docs` (`templates/admin/docs.html`) explains the application, SSL/HTTPS (incl. PFX conversion), LDAP and operations. It reads
-live values (rotation week, step, night window, payroll cut-off). Keep it in step with the rules in this file.
+### 6.5 Documentation
+- **User Guide** (`/guide`): for everyone, employee and manager parts, with screenshots (§6.4b).
+- **Admin › Documentation** (`/admin/docs`, `templates/admin/docs.html` + `templates/_admin_docs.html`, anchors `adm-*`): the administrator's reference (how it works, roles, rates, payroll, Import History, SSL/HTTPS incl. PFX conversion, LDAP, operations); reads live values. It is **not** part of the User Guide.
+- **Views carry no explanatory paragraphs**: no `.help` / `.subtitle` descriptions under titles, only labels, units and status/validation messages; explanations go to one of the two documents above. Keep them in step with the rules in this file.
 
 ## 7. Repository layout
 
@@ -375,6 +372,7 @@ app/timelog/             Python package
   security.py            password hashing, sessions, CSRF, current-user deps, login throttle
   app_settings.py        admin-editable settings, feature flags, LDAP overrides, secrets
   ldap_auth.py           LDAP search/bind/sync/diagnose
+  history_import.py      backfill of past on-call/overtime from the Finance workbooks (Admin › Import History)
   workflow.py            sheet state transitions + snapshots + audit + conflicts
   signatures.py          signature validation and content digest
   backup.py              encrypted backups, restore, schedule
@@ -387,11 +385,13 @@ app/timelog/             Python package
   web.py, main.py        template helpers; app factory (middleware, scheduler, error handlers)
   version.py             version / build info
   seed.py, demo.py       initial data; `python -m timelog.demo` creates demo local users
-  routes/                auth, home, oncall, overtime, approvals, submission, payroll, team, guide, admin, common, notifications
+  ooh_report.py          ServiceNow export parsing, out-of-hours hours per day type, chart geometry (SVG)
+  routes/                auth, home, oncall, overtime, approvals, submission, payroll, team, ooh, guide, admin, common, notifications
   templates/, static/
 app/tests/               pytest (SQLite; PostgreSQL via TEST_DATABASE_URL)
 proxy/nginx.conf.template
-scripts/                 build, coverage, backup-db, make-csr, make-selfsigned, make-offline-package, make-export-templates
+scripts/                 build, coverage, backup-db, make-csr, make-selfsigned, make-offline-package, make-export-templates,
+                         make-ooh-example.py, make-backfill-samples.py (fictional test workbooks, output in git-ignored samples/)
 docs/screenshots/        README screenshots (demo data, fictional users; regenerate when the UI changes, see §8.5)
 deploy/                  files shipped in the offline package (installers, convert-pfx, README-OFFLINE-<target>.md)
 certs/                   (git-ignored) server.crt / server.key / ldap-ca.pem
@@ -425,20 +425,21 @@ The JS (`static/app.js`) has no automated tests; static assets are excluded from
 - Demo/test identities are fictional (alice, bob, … `@example.test`); real employee names must never appear in the repo.
 
 ### 8.2 Code quality (SonarQube)
-- The local SonarQube is a **separate tool outside this repo**: `../sonar/` (Community Build, 127.0.0.1:9000, `scan.sh`,
-  `.local.env`, `reports/`). Run `../sonar/scan.sh .` from the repo root.
+- The security tools are **separate from this repo**, in the sibling `../security-stack/` (SonarQube Community Build on :9000,
+  Dependency-Track on :8081/:8082, Grype, Grafana). Run everything with `../security-stack/stack.sh scan . timelog` from the repo
+  root (`stack.sh up` first if the stack is down); each tool also has its own `scan.sh` there.
 - In this repo: `sonar-project.properties` (project key `timelog`) and `scripts/coverage.sh` (pytest + coverage → `app/coverage.xml`
   with repo-relative paths), which `scan.sh` runs first. `.scannerwork/` and `app/coverage.xml` are git-ignored.
-- Current result (1.18.5, via `../security-stack/stack.sh scan ../timelog`): **0 issues, 0 hotspots**, quality gate passed.
+- Current result (2.0.0, via `../security-stack/stack.sh scan . timelog`): **0 issues, 0 hotspots**, quality gate passed.
 - Template rules that keep the scan clean: every input has an `id` + `<label for>` (use `.sr-only` when the label is not displayed),
   `<th scope="col|row">`, totals rows use `<td>` (not `<th>`), no Jinja `{% if %}` blocks inside an HTML start tag (render the
   attribute unconditionally), JSON in attributes via `|tojson` inside **single quotes**, no `autofocus`.
 
 ### 8.3 Dependency scanning (Dependency-Track)
-- Local OWASP Dependency-Track in the sibling folder `../dependency-track/` (UI :8081, API :8082, credentials in its `.local.env`).
-  Run `../dependency-track/scan.sh .` from the repo root: SBOM of `app/requirements.txt` (resolved, incl. transitive), upload,
+- Local OWASP Dependency-Track in `../security-stack/dependency-track/` (UI :8081, API :8082, credentials in its `.local.env`).
+  Run `../security-stack/dependency-track/scan.sh .` from the repo root: SBOM of `app/requirements.txt` (resolved, incl. transitive), upload,
   findings (OSV/PyPI mirror enabled). Details in that folder's README.
-- Current result: **0 findings**. Re-scan after every dependency change.
+- Current result (2.0.0): **0 findings**. Re-scan after every dependency change.
 
 ### 8.4 Offline deployment package
 - **Targets**: Docker containers on **RHEL 9** (Docker Engine; SELinux enforcing supported through `:z` on every bind mount in
@@ -452,7 +453,7 @@ The JS (`static/app.js`) has no automated tests; static assets are excluded from
   `deploy/README-OFFLINE-<target>.md`), `MANIFEST.txt`, `CHECKSUMS.sha256` (verified by the installer). RHEL: `docker-rpms/` (docker-ce,
   cli, containerd.io, compose and buildx plugins + missing dependencies, resolved in an `almalinux:9` container from Docker's RHEL
   repo; `INCLUDE_DOCKER_RPMS=0` to skip). Windows: Docker is a documented prerequisite (not bundled).
-- **Install directory and data folders** (since 1.11.3): `deploy/install.sh` (RHEL) deploys the program files into a fixed directory
+- **Install directory and data folders**: `deploy/install.sh` (RHEL) deploys the program files into a fixed directory
   (`--dir`, default `/opt/timelog`) and runs everything from there; the unzipped package is disposable. `docker-compose.yml` bind-mounts
   `./db-data` (PostgreSQL) and `./backups` (both `:z`). The directory holds `.env`, `certs/`, `db-data/`, `backups/`, which the installer never
   overwrites. **An existing `.env` in the directory means upgrade** (no `--server-name` needed; `--upgrade` only asserts it); a directory with
@@ -472,19 +473,18 @@ The JS (`static/app.js`) has no automated tests; static assets are excluded from
   `deploy/README-OFFLINE-*.md` in step with the scripts. Releasing: bump `__version__`, run the tests, build the package(s).
 
 ### 8.5 README screenshots
-- `docs/screenshots/*.png` (dashboard, on-call, overtime, approvals, statistics, payroll) are referenced from README.md. They are
+- `docs/screenshots/*.png` (dashboard, on-call, overtime, approvals, statistics, payroll) are referenced from README.md and are in the ResOps look. The same demo data feeds the user-guide screenshots and `scripts/make-backfill-samples.py` (throwaway SQLite with the demo users, approved on-call/overtime for Jan-Oct, written through the real Finance exporter; use it to test Admin › Import History after `python -m timelog.demo` in the target instance). They are
   taken from a **throwaway SQLite instance** (`python -m timelog.demo` + a few sheets submitted/approved through `workflow`), driven
   headless with Playwright using the installed Brave as the browser (viewport 1360×1000, scale 1.5, notices cleared). Use fictional
   demo users only (§8.1); never capture the real stack. Not part of the offline package.
 
 ## 9. Current state
 
-- Version **1.18.5** (opentelemetry-api 1.45.2, Sonar clean-up; 1.18.4: security review: grid row cap, echoed input cut; 1.18.3: payroll deadline box in the header; 1.18.2: payroll deadline on every page; 1.18.1: review fixes to the overtime grid save; 1.18.0: monthly overtime grid, ServiceNow # label, pre-approval removed; 1.17.0: sortable users table, tidier bulk-edit panel; 1.16.0: bulk edit: Management flag and reload from the directory; 1.15.0: Management role, approval only; 1.14.0: guide and documentation shortened, table-style edit-user form, Admin › Submissions cleanup, header notification bell, dark-red Admin button; 1.13.0: cut-off calendar keyed by cut-off month, per-user theme toggle; 1.12.0: automatic dark mode following the OS setting; the Employee ID attribute mapping, field and export column are removed; the unused `users.employee_id` column stays in the schema for existing databases; 1.11.4: LDAP *Test connection* now reports a failed search (result code, message, base, filter) instead of "0 entries"; 1.11.3: RHEL installer deploys to `/opt/timelog` and upgrades in place; 1.11.2: LDAP connections no longer follow AD referrals, `auto_referrals=False`, which broke user lookups from a domain-root search base; 1.11.1: data in bind-mounted `db-data/` and `backups/` folders instead of Docker volumes; 1.11.0: prepare LDAP users in advance; on top of 1.10.0: teams panel, bulk user edit, cut-off calendar, payroll-check block). 135 pytest tests pass on SQLite; the backup and restore tests also pass on PostgreSQL 16. SonarQube (0 issues,
-  0 hotspots, gate passed) and Dependency-Track (0 findings) re-run clean on this version.
-- Latest offline package: `dist/timelog-1.18.5-offline-rhel9-amd64.zip` (+ `.sha256`, **without** the Docker RPMs: `INCLUDE_DOCKER_RPMS=0`), built from the 1.18.5 sources after
-  the tests passed (SonarQube / Dependency-Track last run on 1.11.0; 1.11.2 changes one line of `ldap_auth.py`). Older packages in `dist/` (1.18.4, 1.18.1, 1.17.0, 1.16.0, 1.15.0, 1.14.0, 1.13.0, 1.3.1, 1.4.0, 1.7.0, 1.9.0, 1.10.0, 1.11.0, 1.11.1, 1.11.2, 1.11.3, 1.11.4, 1.11.5, 1.12.0) are obsolete.
-- The local Docker instance holds no demo users: only `admin` and `tuser` (admin). Demo data for screenshots lives in a throwaway
-  SQLite database, never in the local stack.
+- Version **2.0.0**: Analysis (out-of-hours report, Experts / Officers panes, saved datasets, change request numbers, click-a-chart popups), Statistics Overview / Experts / Officers tabs with charts from logged data, Admin › Import History (backfill; one workbook per month or one sheet per month), ResOps visual identity. 165 pytest tests pass on SQLite; the backup and restore tests also pass on PostgreSQL 16 (last checked on 1.18.5).
+- Security checks on 2.0.0 (`../security-stack/stack.sh scan . timelog`, 2026-11-27): SonarQube **0 issues, 0 hotspots**, quality gate passed; Dependency-Track **0 findings** for `timelog@2.0.0`; Grype **0 findings**. (The stack's Grafana ingest still prints "timelog@1.1.0: 73 findings": a stale 1.1.0 project record in Dependency-Track, not the current version.)
+- Latest offline package: `dist/timelog-2.0.0-offline-rhel9-amd64.zip` (+ `.sha256`, **without** the Docker RPMs: `INCLUDE_DOCKER_RPMS=0`), built from the 2.0.0 sources after the tests and scans were clean. Upgrade in place with `install.sh --upgrade` (data and `.env` kept; new tables are created at start, no manual migration). Older packages in `dist/` are obsolete.
+- The local Docker instance (dev stack, review only) holds `admin`, `tuser` and possibly the demo users; demo data for screenshots
+  lives in a throwaway SQLite database, never in the local stack.
 - **Verified**: image build; the full stack (nginx HTTPS + app + PostgreSQL 16, all healthy); HTTP→HTTPS redirect; every page for
   each role; the offline package built, unzipped in an empty folder and installed without any repository or registry (RHEL 9 amd64
   package under emulation: install, in-place upgrade with data kept, PFX conversion); the bundled Docker RPMs install on a clean
@@ -498,6 +498,6 @@ The JS (`static/app.js`) has no automated tests; static assets are excluded from
 - Confirm the Finance cut-off day (default the 5th of the following month, editable) and the 12-month look-back.
 - Should expert interventions also be counted (not paid) for reporting? Currently counted in the export.
 - Explicit delegation / absence handling beyond skip-level approval (e.g. a named delegate, notification of the skip-level manager when the direct manager is slow).
-- Finance read-only role (currently managers export and send the file).
 - Alembic migrations before the first production schema change.
+- Import History: late-claim ("(late)") tabs are skipped because their payroll month is unknown; decide how to place them. Overtime imported from the workbooks has no start/end times.
 - Restrict the on-call conflict check per team if rotations turn out to be per team.

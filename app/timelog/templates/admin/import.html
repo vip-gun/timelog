@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Import History{% endblock %}
+{% block content %}
+{% include "admin/_nav.html" %}
+<div class="page-head"><div><span class="eyebrow">Administration</span><h1>Import History</h1></div></div>
+
+<section class="card">
+  {% if error %}<div class="banner banner-error" role="alert">{{ error }}</div>{% endif %}
+  <form method="post" action="/admin/import" enctype="multipart/form-data" class="form-grid">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <div class="span-2"><label for="imp-oc">On-call workbook(s) (.xlsx)</label><input id="imp-oc" type="file" name="oncall_file" accept=".xlsx" multiple></div>
+    <div class="span-2"><label for="imp-ot">Overtime workbook(s) (.xlsx)</label><input id="imp-ot" type="file" name="overtime_file" accept=".xlsx" multiple></div>
+    <p class="span-all muted small">A workbook may hold <strong>one sheet per month</strong> (a yearly file) or a single month; select several files at once if you have one per month.</p>
+    <div class="span-2"><label class="check" for="imp-dry"><input id="imp-dry" type="checkbox" name="dry_run" value="1" {% if dry %}checked{% endif %}> Dry run: show what would be imported, change nothing</label></div>
+    <div><button class="btn btn-primary">{% if dry %}Check{% else %}Import{% endif %}</button></div>
+  </form>
+</section>
+
+{% if outcome %}
+<section class="card">
+  <h2>{% if dry %}Dry run: nothing was saved{% else %}Imported{% endif %}</h2>
+  {% for w in outcome.warnings %}<div class="banner banner-info">{{ w }}</div>{% endfor %}
+  <p><strong>{{ outcome.created|length }}</strong> sheet(s) {% if dry %}would be{% else %}were{% endif %} created as approved and sent to Finance
+    ({{ outcome.runs_created }} payroll run(s) {% if dry %}to create{% else %}created{% endif %}, {{ outcome.runs_extended }} extended); <strong>{{ outcome.skipped|length }}</strong> skipped.</p>
+  {% if outcome.skipped %}
+  <h3>Skipped</h3>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th scope="col">Kind</th><th scope="col">Name in the file</th><th scope="col">Month</th><th scope="col">Reason</th></tr></thead>
+    <tbody>{% for s in outcome.skipped %}<tr><td>{{ s.kind }}</td><td>{{ s.name }}</td><td>{{ s.period }}</td><td>{{ s.reason }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% endif %}
+  {% if outcome.created %}
+  <h3>{% if dry %}To create{% else %}Created{% endif %}</h3>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th scope="col">Kind</th><th scope="col">Employee</th><th scope="col">Month</th><th scope="col">Content</th></tr></thead>
+    <tbody>{% for c in outcome.created %}<tr><td>{{ c.kind }}</td><td>{{ c.name }}</td><td>{{ c.period }}</td><td>{{ c.detail }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

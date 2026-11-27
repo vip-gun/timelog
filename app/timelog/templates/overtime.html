@@ -21,12 +21,6 @@
 {% if grid_active %}
 <section class="card">
   <h2>Log overtime</h2>
-  <p class="help">
-    One row per day, from {{ window_first|date }} to today. Fill in the days you worked, leave the others empty, then <strong>Save</strong>.
-    Worked twice in a day? Use <strong>+</strong> to add a row for that day. Type a time (for example 08:45) or pick one from the list; times are in {{ step }}-minute steps.
-    Night hours ({{ '%02d:%02d' % (settings.night_start // 60, settings.night_start % 60) }}–{{ '%02d:%02d' % (settings.night_end // 60, settings.night_end % 60) }}) are computed automatically and an entry past midnight is split per day.
-    Days on your on-call sheet are marked <span class="tag tag-oncall">On-call</span> and recorded as on-call interventions.
-  </p>
   {% if next_is_supplement %}<div class="banner banner-info">{{ month_label(year, month) }} is already approved: new entries for this month go to a <strong>supplementary sheet</strong> (late claim) that you then submit.</div>{% endif %}
   <form method="post" action="/overtime/{{ year }}/{{ month }}/save" id="ot-grid" data-step="{{ step }}">
     <input type="hidden" name="csrf_token" value="{{ csrf }}">

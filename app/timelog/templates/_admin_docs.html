@@ -1,0 +1,204 @@
+<section class="card docs" id="adm-overview">
+  <h2>How it works</h2>
+  <ol>
+    <li>Employees fill a monthly <em>draft</em>: on-call days and (normal employees) overtime entries.</li>
+    <li>One <strong>Submit</strong> sends all drafts of the month to the line manager (with a comment and, if enabled, a signature).</li>
+    <li>The manager approves, or rejects with a comment; a rejected sheet is edited and resubmitted.</li>
+    <li>Approved sheets go into the monthly reports that <strong>IT Procurement</strong> sends to Finance (<em>Payroll</em>).</li>
+  </ol>
+</section>
+
+<section class="card docs" id="adm-roles">
+  <h2>Roles &amp; users</h2>
+  <table class="table">
+    <thead><tr><th scope="col">Role</th><th scope="col">Can do</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">Employee</th><td>Declares on-call and overtime, submits, withdraws; sees only their own data.</td></tr>
+      <tr><th scope="row">Expert</th><td>On-call only; an intervention doubles the day's rate. Overtime is refused server-side.</td></tr>
+      <tr><th scope="row">Line manager</th><td>Anyone with direct reports. Approves/rejects everyone below them (skip-level included) and has the <em>Statistics</em> page. No downloads.</td></tr>
+      <tr><th scope="row">Management</th><td>Approval only: no on-call or overtime of their own (pages, submission and sheets refused server-side). Approves the people below them, so make them the line manager of those people; has Statistics. Set in Users; not part of exports.</td></tr>
+      <tr><th scope="row">IT Procurement</th><td>Downloads the whole-organisation payroll reports and records them as sent to Finance. Cannot open individual sheets. Set in Users or by <code>LDAP_GROUP_PROCUREMENT</code>.</td></tr>
+      <tr><th scope="row">Administrator</th><td>Manages users, teams, grades, holidays, settings; reads the audit log; approves any sheet; reopens an approved sheet (audited).</td></tr>
+    </tbody>
+  </table>
+  <p>Colleagues never see each other; unauthorised access answers <em>404</em>. Team and manager come from the directory (<code>department</code>, <code>manager</code>) at each login unless locked.</p>
+  <ul>
+    <li><strong><a href="/admin/users">Users</a></strong>: edit, <em>Archive</em> (disables sign-in, keeps all records, reversible) or <em>Delete</em> (removes the account and its unapproved sheets; refused for users with approved sheets or a recorded payroll run, or for the last admin / yourself).</li>
+    <li><strong>Bulk edit</strong>: tick users, fill only the fields to change (team, manager, Expert, Management, grade). Users who would break a rule (hierarchy cycle, Expert in an overtime-only team, Expert + Management) are skipped and listed. <em>Lock</em> keeps LDAP users' values from being overwritten at next login. <em>Reload from the directory</em> refreshes the selected LDAP users (names, e-mail, team, manager, groups) and clears their locks; local accounts and users not found are skipped.</li>
+    <li><strong><a href="/admin/users/ldap">Prepare LDAP users</a></strong>: create directory accounts before their first sign-in from a list of usernames (optional directory lookup; optional team, manager, Expert, grade for all).</li>
+    <li><strong><a href="/admin/teams">Teams</a></strong>: create, rename (moves members), delete when empty, and switch on-call off for overtime-only teams. A team with Experts cannot be switched off.</li>
+    <li><strong><a href="/admin/sheets">Submissions</a></strong>: list every sheet, filter by user, year, kind, status; <em>delete</em> selected sheets permanently (type <code>DELETE</code>). Meant for cleaning up test instances: it also removes lines, signatures and payroll-run links (a run left empty is removed). Audited as <code>sheets_delete</code>; take a backup first.</li>
+  </ul>
+</section>
+
+<section class="card docs" id="adm-oncall">
+  <h2>On-call</h2>
+  <ul>
+    <li>Weekly rotation from <strong>{{ week_start_name }} at {{ week_handover }}</strong> (Settings; the handover is informational, days are booked whole). The week switch books all 7 days; a week over two months also books the other month's days on that sheet.</li>
+    <li>Daily stipend from the employee's <a href="/admin/grades">grade</a> and the day type.</li>
+    <li><strong>Experts</strong> record interventions on the grid (incident, comment; double rate). <strong>Normal employees</strong> record them as overtime, recognised automatically on a booked on-call day.</li>
+    <li><strong>Conflicts</strong>: managers and admins see a red banner when another employee has the same day on a submitted or approved sheet. Not blocking; people outside the viewer's scope are not named.</li>
+    <li><strong>Teams without on-call</strong> (Teams page): no On-call page, nav item or export line; existing sheets stay visible.</li>
+    <li>Rates and day types are frozen at submission.</li>
+  </ul>
+</section>
+
+<section class="card docs" id="adm-overtime">
+  <h2>Overtime</h2>
+  <ul>
+    <li>Date + from/to in <strong>{{ settings.overtime_step_minutes }}-minute steps</strong>; day and night hours ({{ '%02d:%02d' % (settings.night_start // 60, settings.night_start % 60) }}–{{ '%02d:%02d' % (settings.night_end // 60, settings.night_end % 60) }}) are computed. Past-midnight entries are split per day; no overlaps; no future dates.</li>
+    <li>Up to <strong>{{ settings.overtime_lookback_months }} months back</strong>, on the sheet of the work month. If that month is approved, a <strong>supplementary sheet</strong> is opened.</li>
+    <li>Overtime is entered in a monthly grid, one row per day (extra rows for several sessions in a day). Entries on a booked on-call day are flagged as on-call interventions automatically.</li>
+    <li>Compensation is <strong>paid</strong> or <strong>time in lieu</strong> (when enabled in <a href="/admin/settings">Settings</a>).</li>
+  </ul>
+</section>
+
+<section class="card docs" id="adm-rates">
+  <h2>Rates &amp; calculation</h2>
+
+  <h3>Day types</h3>
+  <p>One type per day: <strong>Legal holiday</strong> (<a href="/admin/holidays">holiday table</a>) wins over <strong>Saturday</strong> / <strong>Sunday</strong>, which win over <strong>Weekday</strong>.</p>
+
+  <h3>On-call daily rates ({{ settings.currency }} per on-call day, per grade)</h3>
+  <table class="table">
+    <thead><tr><th scope="col">Grade</th><th scope="col" class="r">Weekday</th><th scope="col" class="r">Saturday</th><th scope="col" class="r">Sunday</th><th scope="col" class="r">Legal holiday</th></tr></thead>
+    <tbody>
+    {% for g in grades %}<tr><th scope="row">{{ g.code }}{% if g.name %} <span class="muted small">{{ g.name }}</span>{% endif %}</th><td class="r">{{ g.rate_weekday|money }}</td><td class="r">{{ g.rate_saturday|money }}</td><td class="r">{{ g.rate_sunday|money }}</td><td class="r">{{ g.rate_holiday|money }}</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  <p class="help">Amount of a day = rate of the employee's grade for that day type; an <strong>Expert</strong> intervention doubles it. Edit under <a href="/admin/grades">Grades &amp; on-call rates</a>; frozen at submission.</p>
+
+  <h3>Overtime: hours, day and night</h3>
+  <p>Each entry is split into <strong>day</strong> and <strong>night</strong> hours (night = {{ '%02d:%02d' % (settings.night_start // 60, settings.night_start % 60) }}–{{ '%02d:%02d' % (settings.night_end // 60, settings.night_end % 60) }}) and summed per day type.</p>
+
+  <h3>Payroll codes (paid overtime)</h3>
+  <p>Premiums are additive; Finance applies the hourly rate to each code's hours.</p>
+  <table class="table">
+    <thead><tr><th scope="col">Code</th><th scope="col">Meaning</th><th scope="col">Hours counted</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">HL100</th><td>Normal, base 100%</td><td>All paid overtime hours</td></tr>
+      <tr><th scope="row">HL101</th><td>Normal, 50% premium</td><td>All paid overtime hours</td></tr>
+      <tr><th scope="row">HL111</th><td>Night, 30% premium</td><td>Paid night hours (any day type)</td></tr>
+      <tr><th scope="row">HL130</th><td>Sunday, 70% premium</td><td>Paid hours on Sundays</td></tr>
+      <tr><th scope="row">HL121</th><td>Legal holiday, 200% premium</td><td>Paid hours on legal holidays (never also HL130)</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Overtime multipliers</h3>
+  <p>The same factors credit <strong>time in lieu</strong> (hours &times; factor){% if not til_on %}; TIL is currently off in <a href="/admin/settings">Settings</a>{% endif %}.</p>
+  <table class="table">
+    <thead><tr><th scope="col">Day type</th><th scope="col" class="r">Day</th><th scope="col" class="r">Night</th><th scope="col">Made of</th></tr></thead>
+    <tbody>
+    {% for code, label, parts in [("W", "Weekday", "100% + 50% (night: + 30%)"), ("SAT", "Saturday", "100% + 50% (night: + 30%)"), ("SUN", "Sunday", "100% + 50% + 70% (night: + 30%)"), ("H", "Legal holiday", "100% + 50% + 200% (night: + 30%)")] %}
+    <tr><th scope="row">{{ label }}</th><td class="r">&times;{{ "%g"|format(rules[code].til_factor) if rules.get(code) else "-" }}</td><td class="r">&times;{{ "%g"|format(rules[code].til_factor_night) if rules.get(code) else "-" }}</td><td class="muted">{{ parts }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="help">Example: 2 h on a weekday evening, 1 h at night: HL100 = 2, HL101 = 2, HL111 = 1; as TIL: 1 &times; 1.5 + 1 &times; 1.8 = 3.3 h. Factors: <a href="/admin/rules">TIL factors</a>.</p>
+</section>
+
+<section class="card docs" id="adm-workflow">
+  <h2>Approval</h2>
+<pre><code>draft ──submit──▶ submitted ──approve──▶ approved
+  ▲                 │  └──reject(comment)──▶ rejected ──(edit)──▶ submit again
+  └──withdraw───────┘
+approved ──reopen (admin, audited)──▶ draft</code></pre>
+  <ul>
+    <li>One submission per month covers all drafts; if one sheet is refused, none is sent.</li>
+    <li>Approver: the direct manager, any manager above (skip-level) or an admin; never the employee. Every transition is in the <a href="/admin/audit">audit log</a>.</li>
+    <li><strong>Signature</strong> (Settings): drawn or uploaded, stored with a SHA-256 of the sheet content; managers see whether the content changed since. A simple electronic signature, not a qualified one.</li>
+  </ul>
+</section>
+
+<section class="card docs" id="adm-payrun">
+  <h2>Payroll &amp; Finance</h2>
+  <p><strong>Cut-off.</strong> A sheet approved by the cut-off of its work month is paid with that month; later approvals are <em>late claims</em>, paid in the next open period. Cut-offs are explicit dates in the <a href="/payroll/cutoffs">cut-off calendar</a> (IT Procurement or admin); the July row is the date for June work. A month without a date uses day {{ payroll_cutoff }} of the following month (Settings). A period already sent to Finance is closed.</p>
+  <ol>
+    <li>IT Procurement opens <a href="/payroll">Payroll</a>, picks the period and downloads the <strong>on-call</strong> and <strong>overtime</strong> reports (whole organisation; late claims get their own "(late)" tab). A third <em>control</em> workbook gives the detail. Files follow the layout Finance uses and hold values, not formulas.</li>
+    <li>After e-mailing them to Finance, they tick the confirmation and <strong>record the payroll as sent</strong>. This requires both reports downloaded and still matching the data (if something was approved since, download again).</li>
+    <li>The sheets are marked <em>sent to Finance</em>, employees are notified, and the period is closed. A sent sheet cannot be reopened.</li>
+  </ol>
+  <p class="help">Employees get a notice (and e-mail if SMTP is set) for late submission, late approval, payroll sent, or a submission still waiting when the period is sent.</p>
+</section>
+
+<section class="card docs" id="adm-ssl">
+  <h2>SSL / HTTPS</h2>
+  <p>The <code>proxy</code> container (nginx) terminates TLS (TLS 1.2/1.3, HSTS, HTTP redirects to HTTPS); the app is not published. The certificate is configured with <strong>files on the server</strong>, not from this interface.</p>
+  <table class="table">
+    <thead><tr><th scope="col">File (in <code>certs/</code>)</th><th scope="col">Content</th></tr></thead>
+    <tbody>
+      <tr><th scope="row"><code>server.crt</code></th><td>Server certificate <strong>then</strong> the intermediate chain, PEM.</td></tr>
+      <tr><th scope="row"><code>server.key</code></th><td>Private key, PEM, <strong>unencrypted</strong>, <code>chmod 600</code>.</td></tr>
+      <tr><th scope="row"><code>ldap-ca.pem</code></th><td>CA that signed the domain controllers (LDAPS only; unrelated to the web certificate).</td></tr>
+    </tbody>
+  </table>
+
+  <h3>You received a PFX (.pfx / .p12)</h3>
+  <p>Offline package: <code>./convert-pfx.sh server.pfx</code> (Linux) or <code>.\convert-pfx.ps1 server.pfx</code> (Windows) writes both files; no openssl needed. With OpenSSL:</p>
+<pre><code>openssl pkcs12 -in server.pfx -nocerts -nodes -out certs/server.key
+openssl pkcs12 -in server.pfx -clcerts -nokeys -out server-leaf.pem
+openssl pkcs12 -in server.pfx -cacerts -nokeys -out chain.pem
+cat server-leaf.pem chain.pem &gt; certs/server.crt
+chmod 600 certs/server.key</code></pre>
+  <p class="help">OpenSSL 3 error <code>unsupported</code>: add <code>-legacy</code>. Delete the PFX and temporary files afterwards.</p>
+
+  <h3>You generate the key yourself (recommended)</h3>
+<pre><code>scripts/make-csr.sh timelog.corp.example.lu [other-dns-name ...]     # certs/server.key + certs/server.csr
+certreq -submit -attrib "CertificateTemplate:WebServer" server.csr server.cer   # domain-joined Windows host
+openssl x509 -inform DER -in server.cer -out server.pem                          # skip if already PEM
+cat server.pem issuing-ca.pem &gt; certs/server.crt</code></pre>
+
+  <h3>Check and apply</h3>
+<pre><code># both lines must print the same hash
+openssl x509 -in certs/server.crt -noout -pubkey | openssl sha256
+openssl pkey -in certs/server.key -pubout | openssl sha256
+openssl x509 -in certs/server.crt -noout -subject -ext subjectAltName -enddate
+docker compose restart proxy</code></pre>
+  <ul>
+    <li>The SAN must contain the host name users type (<code>SERVER_NAME</code> in <code>.env</code>); clients must trust the root CA (usually via group policy).</li>
+    <li>Not on port 443: set <code>HTTPS_PORT</code> and <code>HTTPS_PORT_SUFFIX=:&lt;port&gt;</code>.</li>
+    <li>Renew by repeating the steps and restarting the proxy (short interruption, no data affected). Dev: <code>scripts/make-selfsigned.sh timelog.local</code>.</li>
+  </ul>
+</section>
+
+<section class="card docs" id="adm-ldap">
+  <h2>LDAP / Active Directory</h2>
+  <p>Local accounts are checked first (a local admin can always sign in); everyone else is checked against the directory. Configure in <a href="/admin/settings#ldap">Admin › Settings › LDAP</a> (stored values override the <code>LDAP_*</code> variables of <code>.env</code>; <em>Reset to .env values</em> removes them).</p>
+  <table class="table">
+    <thead><tr><th scope="col">Setting</th><th scope="col">Meaning / example</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">Server URL</th><td><code>ldaps://dc01.corp.example.lu:636</code>, or <code>ldap://…</code> with StartTLS. Never clear text.</td></tr>
+      <tr><th scope="row">CA certificate</th><td>Paste the root/issuing CA (PEM) or use <code>certs/ldap-ca.pem</code>. Keep server verification on.</td></tr>
+      <tr><th scope="row">Bind DN / password</th><td>Read-only service account. The password is encrypted with a key derived from <code>SECRET_KEY</code> and never shown; rotating the key means re-entering it.</td></tr>
+      <tr><th scope="row">Search base / filter</th><td>E.g. <code>OU=Users,DC=corp,DC=example,DC=lu</code> and <code>(sAMAccountName={username})</code> (must contain <code>{username}</code>).</td></tr>
+      <tr><th scope="row">Attributes</th><td>AD defaults: <code>sAMAccountName</code>, <code>givenName</code>, <code>sn</code>, <code>displayName</code>, <code>mail</code>, <code>department</code> (team), <code>manager</code>.</td></tr>
+      <tr><th scope="row">Groups</th><td>DNs for <em>allowed to sign in</em>, <em>administrators</em>, <em>Experts</em>, <em>IT Procurement</em> (nested groups resolved by AD). An empty group means that flag is set by hand in Users.</td></tr>
+    </tbody>
+  </table>
+  <p>At each login the service account finds the user, the user's password is checked by bind (empty passwords refused), then names, e-mail, team and manager are updated (the manager account is created too) unless locked, and group flags are applied.</p>
+  <p><strong>Go live:</strong> save, run <a href="/admin/settings#ldap-test">Test connection</a> (no user password needed), sign in with a directory account in a private window, then set <code>LOCAL_LOGIN_ADMIN_ONLY=true</code> keeping one local break-glass admin.</p>
+  <p class="help">Typical failures: <em>cannot connect</em> (firewall, port, DNS), <em>certificate verify failed</em> (missing CA, wrong host name), <em>invalid credentials</em> (bind DN/password), <em>no entry</em> (base or filter).</p>
+</section>
+
+<section class="card docs" id="adm-import">
+  <h2>Import history (backfill)</h2>
+  <p>Admin › <a href="/admin/import">Import History</a> loads past months from the Finance workbooks (the same layout the Payroll page downloads). Upload the on-call workbooks, the overtime workbooks, or both (several files at once are fine: the Payroll page gives one workbook per month). A single workbook can also hold <strong>one sheet per month</strong>, such as a yearly file: every sheet is read, using the dates in its header (row 3 for on-call, A2 and row 2 for overtime), whatever the sheet is called. Keep <strong>Dry run</strong> ticked first: it lists the sheets that would be created and the rows that would be skipped, and saves nothing.</p>
+  <ul>
+    <li>Each tab is a work month and each employee row becomes an <strong>approved sheet already sent to Finance</strong> (payroll period = that month). No notice or e-mail is sent.</li>
+    <li>People are matched by name (first + last, last + first, display name or username). Unknown or ambiguous names, Management accounts, Expert overtime, teams without on-call and months where the user already has a sheet are skipped and listed. Existing sheets are never changed.</li>
+    <li>On-call: rates come from the workbook's pricing block; an Expert's "Incidents/calls" row doubles that day.</li>
+    <li>Overtime workbooks only hold hours per day, so every day becomes one entry starting at 00:00 whose length is the hours (marked "times unknown"). Night hours and TIL credits are spread so the totals equal the workbook.</li>
+    <li>"(late)" tabs are skipped. Back up first (Admin › Backup): imported months are closed and cannot be re-imported.</li>
+  </ul>
+</section>
+
+<section class="card docs" id="adm-ops">
+  <h2>Operations</h2>
+  <ul>
+    <li><strong><a href="/admin/backup">Backup</a></strong>: create, download, upload, delete, restore (writes a safety copy first), and a daily/weekly schedule (UTC, number kept). Files are AES-256-GCM encrypted with a key from <code>BACKUP_PASSPHRASE</code> (else <code>SECRET_KEY</code>): <strong>store it separately</strong>, a backup cannot be read without it. They live in <code>backups/</code> next to <code>docker-compose.yml</code>; copy them off the host regularly.</li>
+    <li><strong>Settings</strong> switch features: time in lieu, signature on submission, amounts visible to employees, on-call rotation, cut-off day.</li>
+    <li><strong>Logs</strong>: <code>docker compose logs -f app proxy</code>. <strong>Health</strong>: <code>GET /healthz</code>.</li>
+    <li><strong>Update</strong>: load the new image (<code>docker load</code> or <code>scripts/build.sh</code>), then <code>docker compose up -d</code>. The footer shows the version (build {{ build.version }}).</li>
+    <li><strong>Secrets</strong> are in <code>.env</code>; the app refuses to start with the example placeholders.</li>
+  </ul>
+</section>

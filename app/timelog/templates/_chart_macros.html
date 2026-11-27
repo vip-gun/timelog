@@ -1,0 +1,34 @@
+{% macro legend() %}
+<ul class="legend" aria-label="Legend">
+  {% for t in types %}<li><span class="swatch t-{{ t }}"></span>{{ type_labels[t] }}</li>{% endfor %}
+</ul>
+{% endmacro %}
+{% macro columns_svg(c, label, ylabel="Hours", xlabel="Month") %}
+<svg class="chart" viewBox="0 0 {{ c.w }} {{ c.h }}" role="img" aria-label="{{ label }}" preserveAspectRatio="xMidYMid meet">
+  {% for t in c.ticks %}<line class="grid-line" x1="{{ c.left }}" x2="{{ c.right }}" y1="{{ t.y }}" y2="{{ t.y }}"/><text class="axis" x="{{ c.left - 6 }}" y="{{ t.y + 3 }}" text-anchor="end">{{ t.text }}</text>{% endfor %}
+  {% for b in c.bars %}<rect class="t-{{ b.t }}" x="{{ b.x }}" y="{{ b.y }}" width="{{ b.w }}" height="{{ b.h }}"><title>{{ b.title }}</title></rect>{% endfor %}
+  <line class="grid-line" x1="{{ c.left }}" x2="{{ c.right }}" y1="{{ c.base }}" y2="{{ c.base }}"/>
+  {% for l in c.xlabels %}<text class="axis" x="{{ l.x }}" y="{{ c.h - 5 }}" text-anchor="middle">{{ l.text }}</text>{% endfor %}
+  <text class="axis title" x="{{ c.xt.x }}" y="{{ c.xt.y }}" text-anchor="middle">{{ xlabel }}</text>
+  <text class="axis title" transform="rotate(-90 {{ c.yt.x }} {{ c.yt.y }})" x="{{ c.yt.x }}" y="{{ c.yt.y }}" text-anchor="middle">{{ ylabel }}</text>
+</svg>
+{% endmacro %}
+
+
+{% macro items_table(items, unit="h", cap=500) %}
+<p class="muted small">{{ items|length }} item(s){% if items|length > cap %}, the first {{ cap }} are listed{% endif %}</p>
+<div class="table-wrap"><table class="table chart-items">
+  <thead><tr><th scope="col">Number</th><th scope="col">Person</th><th scope="col">Start</th><th scope="col">End</th>{% for t in types %}<th scope="col" class="r">{{ type_labels[t] }}</th>{% endfor %}<th scope="col">Description</th></tr></thead>
+  <tbody>
+    {% for d in items[:cap] %}
+    <tr><td class="nowrap">{{ d.number }}</td><td>{{ d.person }}</td>
+      <td class="nowrap">{% if d.allday %}{{ d.start.strftime("%Y-%m-%d") }}{% else %}{{ d.start.strftime("%Y-%m-%d %H:%M") }}{% endif %}</td>
+      <td class="nowrap">{% if d.allday %}all day{% else %}{{ d.end.strftime("%Y-%m-%d %H:%M") }}{% endif %}</td>
+      {% for t in types %}<td class="r">{% if d.hours[t] %}{% if unit == "h" %}{{ "%.2f"|format(d.hours[t]) }}{% else %}{{ "%d"|format(d.hours[t]) }}{% endif %}{% endif %}</td>{% endfor %}
+      <td class="desc">{{ d.description }}</td></tr>
+    {% else %}
+    <tr><td colspan="{{ types|length + 5 }}" class="muted">No item.</td></tr>
+    {% endfor %}
+  </tbody>
+</table></div>
+{% endmacro %}

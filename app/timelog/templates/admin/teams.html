@@ -6,9 +6,6 @@
   <h1>Teams</h1>
   <div class="actions"><a class="btn btn-ghost" href="/admin/users">Users &amp; bulk edit</a></div>
 </div>
-<p class="help">A user's team is a free-text field (filled from the directory for LDAP users). Here you manage the teams themselves: rename one, create an empty one, and decide whether the team <strong>declares on-call</strong>.
-  A team with on-call switched off does <strong>overtime only</strong>: its members have no On-call page, no on-call line in the Finance export and no on-call section in their User Guide. Sheets that already exist stay visible.
-  To move people between teams, select them in <a href="/admin/users">Users</a> and use <em>Bulk edit</em>.</p>
 <div class="table-wrap">
 <table class="table animate">
   <thead><tr><th scope="col">Team</th><th scope="col">Members</th><th scope="col">Experts</th><th scope="col">Line managers</th><th scope="col">Rename / on-call</th></tr></thead>
@@ -52,5 +49,4 @@
   <label class="check"><input type="checkbox" name="oncall" value="1" checked> declares on-call</label>
   <button class="btn btn-primary">Create team</button>
 </form>
-<p class="help">Experts only declare on-call, so on-call cannot be switched off for a team that has Experts, and an Expert cannot be moved into an overtime-only team. For LDAP users, a team renamed or assigned here is locked against the directory value (<em>Lock team</em> in the user's profile).</p>
 {% endblock %}

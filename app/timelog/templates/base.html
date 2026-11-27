@@ -4,12 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <meta name="theme-color" content="#4F4059">
+  <meta name="theme-color" content="#2C3E50">
   {% set page_title %}{% block title %}Dashboard{% endblock %}{% endset %}
   <title>{{ settings.app_name }} - {{ page_title|titlecase }}</title>
-  <link rel="preload" href="/static/fonts/ibm-plex-sans-latin-400.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="preload" href="/static/fonts/ibm-plex-sans-latin-500.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="preload" href="/static/fonts/space-grotesk-latin-wght.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/static/style.css?v={{ build.asset_tag }}">
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
   <script src="/static/app.js?v={{ build.asset_tag }}" defer></script>
@@ -27,7 +24,7 @@
 {% if user %}
 {% set path = request.url.path %}
 <header class="topbar">
-  <a class="brand" href="/">{{ brand_mark() }}{{ settings.app_name }}</a>
+  <a class="brand" href="/">{{ brand_mark() }}<span class="brand-text"><span class="brand-name">{{ settings.app_name }}</span><span class="brand-tag">On-Call &amp; Overtime Tracking</span></span></a>
   <nav>
     <a href="/" class="{{ 'active' if path == '/' }}">Dashboard</a>
     {% if oncall_enabled %}<a href="/oncall" class="{{ 'active' if path.startswith('/oncall') }}">On-call</a>{% endif %}
@@ -36,6 +33,7 @@
       <a href="/approvals" class="{{ 'active' if path.startswith('/approvals') }}">Approvals</a>
       <a href="/team" class="{{ 'active' if path.startswith('/team') }}">Statistics</a>
     {% endif %}
+    {% if is_manager or user.is_admin %}<a href="/analysis" class="{{ 'active' if path.startswith('/analysis') }}">Analysis</a>{% endif %}
     {% if user.is_procurement or user.is_admin %}<a href="/payroll" class="{{ 'active' if path.startswith('/payroll') }}">Payroll</a>{% endif %}
     <a href="/guide" class="guide-link {{ 'active' if path.startswith('/guide') }}">User Guide</a>
   </nav>

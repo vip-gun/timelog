@@ -1,0 +1,39 @@
+{% set g = report.grand %}
+
+<div class="stats">
+  <div class="stat accent"><span class="label">Out-of-hours total</span><span class="value">{{ "%.1f"|format(report.grand_total) }}<span class="unit">h</span></span></div>
+  {% for t in types %}<div class="stat"><span class="label">{{ type_labels[t] }}</span><span class="value">{{ "%.1f"|format(g[t]) }}<span class="unit">h</span></span></div>{% endfor %}
+  <div class="stat"><span class="label">People</span><span class="value">{{ report.people|length }}</span></div>
+</div>
+
+{% if report.parsed.skipped or report.overlaps or report.long_spans %}
+<div class="banner banner-info" role="status">
+  {% if report.parsed.skipped %}<div><strong>{{ report.parsed.skipped|length }}</strong> row(s) skipped (details at the bottom).</div>{% endif %}
+  {% if report.overlaps %}<div><strong>{{ report.overlaps }}</strong> overlapping intervention(s) of the same person were merged, so no hour is counted twice.</div>{% endif %}
+  {% if report.long_spans %}<div><strong>{{ report.long_spans }}</strong> intervention(s) span more than 24 h; every out-of-hours hour inside them is counted. Check the planned dates.</div>{% endif %}
+</div>
+{% endif %}
+
+{% include "_chart_blocks.html" %}
+
+<section class="card">
+  <details class="details-toggle">
+    <summary>Interventions counted ({{ report.detail|length }})</summary>
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th scope="col">Number</th><th scope="col">Row</th><th scope="col">Person</th><th scope="col">Start</th><th scope="col">End</th>{% for t in types %}<th scope="col" class="r">{{ type_labels[t] }}</th>{% endfor %}<th scope="col">Short description</th></tr></thead>
+        <tbody>
+          {% for d in report.detail %}
+          <tr><td class="nowrap">{{ d.number }}</td><td class="r">{{ d.row }}</td><td>{{ d.person }}</td><td class="nowrap">{{ d.start.strftime("%Y-%m-%d %H:%M") }}</td><td class="nowrap">{{ d.end.strftime("%Y-%m-%d %H:%M") }}</td>{% for t in types %}<td class="r">{{ "%.2f"|format(d.hours[t]) if d.hours[t] else "" }}</td>{% endfor %}<td class="desc">{{ d.description }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
+  {% if report.parsed.skipped %}
+  <details class="details-toggle">
+    <summary>Skipped rows ({{ report.parsed.skipped|length }})</summary>
+    <ul>{% for s in report.parsed.skipped[:200] %}<li>Row {{ s.row }}: {{ s.reason }}</li>{% endfor %}</ul>
+  </details>
+  {% endif %}
+</section>

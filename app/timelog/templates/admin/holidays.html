@@ -3,10 +3,8 @@
 {% block content %}
 {% include "admin/_nav.html" %}
 <h1>Legal holidays</h1>
-<p class="help">A holiday takes precedence over Saturday/Sunday. Used for both on-call rates and overtime premiums.</p>
 <section class="card">
   <h2>Import from an iCalendar file (.ics)</h2>
-  <p class="help">Upload a public-holiday calendar, e.g. the Luxembourg holidays exported from Outlook/Google Calendar or downloaded from an official source. All-day and multi-day events are imported, and each event's title becomes the holiday name. Recurring events are skipped.</p>
   <form method="post" action="/admin/holidays/import" enctype="multipart/form-data" class="form-grid">
     <input type="hidden" name="csrf_token" value="{{ csrf }}">
     <label class="span-2">Calendar file <input type="file" name="file" accept=".ics,text/calendar" required></label>

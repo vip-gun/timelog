@@ -3,7 +3,7 @@
 {% block title %}Statistics {{ month_label(year, month) }}{% endblock %}
 {% block content %}
 {% set p = shift_month(year, month, -1) %}{% set n = shift_month(year, month, 1) %}
-{% set q = "&team=" ~ (team|urlencode) if team else "" %}
+{% set q = ("&team=" ~ (team|urlencode) if team else "") ~ "&months=" ~ chart_months ~ "&status=" ~ chart_status ~ "&group=" ~ chart_group %}
 <div class="page-head">
   <div><span class="eyebrow">Team overview</span><h1>Statistics</h1></div>
   <div class="month-nav">
@@ -13,16 +13,15 @@
   </div>
 </div>
 
-<div class="stats stagger">
-  <div class="stat accent"><span class="label">Approved on-call · payroll {{ MONTH_NAMES[month][:3] }}</span><span class="value"><span data-count="{{ totals.oncall }}" data-decimals="2">{{ totals.oncall|money }}</span><span class="unit">{{ settings.currency }}</span></span></div>
-  <div class="stat"><span class="label">Approved overtime · payroll {{ MONTH_NAMES[month][:3] }}</span><span class="value"><span data-count="{{ totals.hours }}" data-decimals="2">{{ totals.hours|hours }}</span><span class="unit">h</span></span></div>
-  <div class="stat"><span class="label">Late claims in this payroll</span><span class="value"><span data-count="{{ late|length }}">{{ late|length }}</span></span></div>
-  <div class="stat"><span class="label">Late claims awaiting validation</span><span class="value"><span data-count="{{ pending_late|length }}">{{ pending_late|length }}</span></span></div>
-</div>
-
 <section class="card row-between">
   <form method="get" action="/team" class="inline-form">
-    <input type="hidden" name="year" value="{{ year }}"><input type="hidden" name="month" value="{{ month }}">
+    <input type="hidden" name="year" value="{{ year }}"><input type="hidden" name="month" value="{{ month }}"><input type="hidden" name="group" value="{{ chart_group }}">
+    <label>Period
+      <select name="months" data-autosubmit>{% for n in (6, 12, 24) %}<option value="{{ n }}" {% if n == chart_months %}selected{% endif %}>Last {{ n }} months</option>{% endfor %}</select>
+    </label>
+    <label>Sheets
+      <select name="status" data-autosubmit><option value="all" {% if chart_status == "all" %}selected{% endif %}>Submitted and approved</option><option value="approved" {% if chart_status == "approved" %}selected{% endif %}>Approved only</option></select>
+    </label>
     <label>Team
       <select name="team" data-autosubmit>
         <option value="">All teams</option>
@@ -31,6 +30,22 @@
     </label>
   </form>
 </section>
+
+{% set tab_q = "&year=" ~ year ~ "&month=" ~ month ~ "&months=" ~ chart_months ~ "&status=" ~ chart_status ~ ("&team=" ~ (team|urlencode) if team else "") %}
+<div class="docs-layout">
+<nav class="subnav docs-toc" aria-label="Statistics sections">
+  <a href="/team?group=overview{{ tab_q }}" class="{{ 'active' if chart_group == 'overview' }}">Overview</a>
+  <a href="/team?group=experts{{ tab_q }}" class="{{ 'active' if chart_group == 'experts' }}">Experts</a>
+  <a href="/team?group=officers{{ tab_q }}" class="{{ 'active' if chart_group == 'officers' }}">Officers</a>
+</nav>
+<div class="docs-body">
+{% if chart_group == "overview" %}
+<div class="stats stagger">
+  <div class="stat accent"><span class="label">Approved on-call · payroll {{ MONTH_NAMES[month][:3] }}</span><span class="value"><span data-count="{{ totals.oncall }}" data-decimals="2">{{ totals.oncall|money }}</span><span class="unit">{{ settings.currency }}</span></span></div>
+  <div class="stat"><span class="label">Approved overtime · payroll {{ MONTH_NAMES[month][:3] }}</span><span class="value"><span data-count="{{ totals.hours }}" data-decimals="2">{{ totals.hours|hours }}</span><span class="unit">h</span></span></div>
+  <div class="stat"><span class="label">Late claims in this payroll</span><span class="value"><span data-count="{{ late|length }}">{{ late|length }}</span></span></div>
+  <div class="stat"><span class="label">Late claims awaiting validation</span><span class="value"><span data-count="{{ pending_late|length }}">{{ pending_late|length }}</span></span></div>
+</div>
 
 <h2>Work done in {{ month_label(year, month) }}</h2>
 {% set til = features.til or (rows|selectattr("ot")|map(attribute="ot.til_hours")|select|list|length > 0) %}
@@ -85,4 +100,27 @@
 </table>
 </div>
 {% endif %}
+
+{% else %}
+{% if chart_group == "experts" %}
+<h2>Experts: on-call days with an intervention, last {{ chart_months }} months</h2>
+{% else %}
+<h2>Officers: overtime hours, last {{ chart_months }} months</h2>
+{% endif %}
+{% if charts %}
+{% if chart_group == "experts" %}
+{% with report=charts.report, hbars=charts.hbars, team_chart=charts.team_chart, people_charts=charts.people_charts, heat=charts.heat, types=charts.types, type_labels=charts.type_labels, mlabel=charts.mlabel, pane_id="st-experts", unit="days", noun="Days", what="On-call days with an intervention", tickets_label="" %}
+{% include "_chart_blocks.html" %}
+{% endwith %}
+{% else %}
+{% with report=charts.report, hbars=charts.hbars, team_chart=charts.team_chart, people_charts=charts.people_charts, heat=charts.heat, types=charts.types, type_labels=charts.type_labels, mlabel=charts.mlabel, pane_id="st-officers", unit="h", noun="Hours", what="Overtime hours", tickets_label="Entries" %}
+{% include "_chart_blocks.html" %}
+{% endwith %}
+{% endif %}
+{% else %}
+{{ empty_state("No on-call intervention recorded in this period." if chart_group == "experts" else "No overtime logged in this period.") }}
+{% endif %}
+{% endif %}
+</div>
+</div>
 {% endblock %}

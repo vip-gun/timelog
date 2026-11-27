@@ -24,9 +24,7 @@
   <p>Sent to Finance by <strong>{{ run.sent_by.full_name }}</strong> on <strong>{{ run.sent_at|datetime }}</strong>:
     {{ run.oncall_sheets }} on-call and {{ run.overtime_sheets }} overtime sheet(s) of {{ run.employees }} employee(s).
     {% if run.note %}<br><span class="muted">Note: {{ run.note }}</span>{% endif %}</p>
-  <p class="help">This period is closed: declarations approved from now on are paid with the following month. You can still download the reports to check what was sent.</p>
   {% else %}
-  <p class="help">Finance cut-off for this period: {% if deadline %}<strong>{{ deadline|date }}</strong>{% else %}closed{% endif %} (<a href="/payroll/cutoffs?year={{ shift_month(year, month, 1)[0] }}">cut-off calendar</a>). Approvals after the cut-off, or after you record that the reports were sent, are paid with the following month and the employee is notified.</p>
   {% endif %}
   <div class="stats">
     <div class="stat"><span class="label">On-call sheets</span><span class="value">{{ counts.oncall }}</span></div>
@@ -38,7 +36,6 @@
 
 <section class="card">
   <h2>1. Download the reports</h2>
-  <p class="help">Both reports cover the whole organisation. A tab per work month: this month, plus one tab per earlier month for anything validated late.</p>
   <div class="actions-row">
     <a class="btn btn-primary" href="/payroll/export/oncall?year={{ year }}&month={{ month }}">⤓ On-call report (.xlsx)</a>
     <a class="btn btn-primary" href="/payroll/export/overtime?year={{ year }}&month={{ month }}">⤓ Overtime report (.xlsx)</a>
@@ -56,7 +53,6 @@
 {% if not run %}
 <section class="card">
   <h2>2. Record that the reports were sent</h2>
-  <p class="help">After you e-mailed both reports to Finance, record it here. The system logs that the approved declarations of this period were <strong>sent for payment</strong>, closes the period and tells the employees.</p>
   <form method="post" action="/payroll/{{ year }}/{{ month }}/sent" data-confirm="Record that the {{ month_label(year, month) }} on-call and overtime reports were sent to Finance? The period will be closed.">
     <input type="hidden" name="csrf_token" value="{{ csrf }}">
     <label class="check" for="sent-confirm"><input type="checkbox" id="sent-confirm" name="confirm" value="1"> I sent the on-call and overtime reports of {{ month_label(year, month) }} to Finance</label>
@@ -86,14 +82,12 @@
     {% endfor %}
     </tbody>
   </table></div>
-  <p class="help">Rows for earlier months are the declarations validated late; they are listed first, with the date they were approved.</p>
   {% else %}{{ empty_state("Nothing approved for this period yet.") }}{% endif %}
 </section>
 
 {% if waiting and not run %}
 <section class="card">
   <h2>Still waiting for approval</h2>
-  <p class="help">These are not in the reports. If they are not approved before the cut-off or before you record the reports as sent, they are paid with the following month.</p>
   <div class="table-wrap"><table class="table">
     <thead><tr><th scope="col">Employee</th><th scope="col">Type</th><th scope="col">Work month</th><th scope="col">Line manager</th><th scope="col">Submitted</th></tr></thead>
     <tbody>

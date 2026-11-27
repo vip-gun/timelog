@@ -42,9 +42,6 @@
 {% endif %}
 
 {% if editable %}
-<p class="help">
-  Use the <strong>week</strong> switch to book a whole rotation week ({{ week_start_name }} {{ week_handover }} → the following {{ week_start_name }} {{ week_handover }}; days {{ week_start_name }} to {{ week_end_name }} are booked) in one click, or tick individual days. {% if is_expert %}Tick <strong>Intervention</strong> when you were called: the daily rate is then doubled.{% else %}If you were called, log the intervention (hours, incident #, description) on your <a href="/overtime/{{ year }}/{{ month }}">overtime sheet</a>: entries on your on-call days are recognised automatically and shown in the <strong>Intervention</strong> column.{% endif %}
-</p>
 {% elif not own %}
 <p class="help"><a href="/overtime/{{ year }}/{{ month }}?user_id={{ target.id }}">View overtime sheet &rarr;</a></p>
 {% endif %}

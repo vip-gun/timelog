@@ -202,11 +202,11 @@ def test_navigation_order_and_statistics_page(browser, db, users):
         return links, header
 
     links, header = nav(admin.get("/").text)
-    assert links == ["Dashboard", "On-call", "Overtime", "Approvals", "Statistics", "Payroll", "User Guide"]
+    assert links == ["Dashboard", "On-call", "Overtime", "Approvals", "Statistics", "Analysis", "Payroll", "User Guide"]
     # Admin sits on the right, between the navigation and the user block
     assert header.index("</nav>") < header.index('class="admin-link') < header.index('class="who"')
     assert nav(proc.get("/").text)[0] == ["Dashboard", "On-call", "Overtime", "Payroll", "User Guide"] and 'class="admin-link' not in nav(proc.get("/").text)[1]
-    assert nav(mgr.get("/").text)[0] == ["Dashboard", "On-call", "Overtime", "Approvals", "Statistics", "User Guide"]
+    assert nav(mgr.get("/").text)[0] == ["Dashboard", "On-call", "Overtime", "Approvals", "Statistics", "Analysis", "User Guide"]
 
     page = mgr.get("/team").text
     assert "<h1>Statistics</h1>" in page and "<title>Timelog - Statistics" in page
@@ -218,7 +218,7 @@ def test_admin_menu_order(browser, users):
     html = browser("admin").get("/admin/settings").text
     menu = html.split('<nav class="subnav">')[1].split("</nav>")[0]
     labels = [t.strip().replace("&amp;", "&") for t in __import__("re").findall(r"<a[^>]*>([^<]+)</a>", menu)]
-    assert labels == ["Documentation", "Settings", "Users", "Teams", "Submissions", "Grades & on-call rates", "Legal holidays", "TIL factors", "Backup", "Audit log"]
+    assert labels == ["Documentation", "Settings", "Users", "Teams", "Submissions", "Grades & on-call rates", "Import History", "Legal holidays", "TIL factors", "Backup", "Audit log"]
 
 
 def test_skip_level_approval(browser, db, users):
@@ -277,3 +277,35 @@ def test_cutoff_calendar_editable_by_procurement_and_admin(browser, db, users):
     # the admin settings page points to the calendar and lists the upcoming dates
     assert "/payroll/cutoffs" in admin.get("/admin/settings").text
     assert "Must be approved by" in browser("alice").get("/guide").text
+
+
+def test_statistics_charts_use_logged_overtime_and_expert_interventions(browser, db, users):
+    from timelog.models import OnCallDay, OvertimeEntry, Sheet
+    import datetime as dt
+    from decimal import Decimal
+    now = dt.datetime(2026, 8, 20, 10, 0)
+    ot = Sheet(user_id=users["alice"].id, kind="overtime", year=2026, month=8, seq=1, status="approved", submitted_at=now)
+    ot.overtime_entries.append(OvertimeEntry(date=dt.date(2026, 8, 8), start_minute=600, end_minute=780, hours=Decimal("3.00"),
+                                             night_hours=Decimal(0), day_type="SAT", incident_ref="INC777", description="Patching"))
+    draft = Sheet(user_id=users["carol"].id, kind="overtime", year=2026, month=8, seq=1, status="draft")
+    draft.overtime_entries.append(OvertimeEntry(date=dt.date(2026, 8, 9), start_minute=600, end_minute=660, hours=Decimal("1.00"),
+                                                night_hours=Decimal(0), day_type="SUN"))
+    oc = Sheet(user_id=users["bob"].id, kind="oncall", year=2026, month=8, seq=1, status="submitted", submitted_at=now)
+    oc.oncall_days += [OnCallDay(date=dt.date(2026, 8, 10), intervention=True, day_type="W", rate=Decimal(45), amount=Decimal(90)),
+                       OnCallDay(date=dt.date(2026, 8, 11), intervention=False, day_type="W", rate=Decimal(45), amount=Decimal(45))]
+    db.add_all([ot, draft, oc])
+    db.commit()
+    mgr = browser("manager")
+    overview = mgr.get("/team?year=2026&month=8").text                     # default tab: Overview
+    assert "Work done in August 2026" in overview and "Experts: on-call days" not in overview
+    assert all(f'href="/team?group={g}' in overview for g in ("overview", "experts", "officers"))
+    experts = mgr.get("/team?year=2026&month=8&group=experts").text
+    assert "Experts: on-call days with an intervention" in experts and "Bob Test" in experts.split("Experts: on-call days")[1]
+    assert "Alice Test" not in experts.split("Experts: on-call days")[1] and 'href="/team?group=officers' in experts
+    others = mgr.get("/team?year=2026&month=8&group=officers").text
+    chart = others.split("Officers: overtime hours")[1]
+    assert "Alice Test" in chart and "Carol Test" not in chart and "Bob Test" not in chart      # drafts and experts left out
+    assert "INC777" in chart and "Patching" in chart and 'class="chart-open"' in chart      # click a chart: the entries behind it
+    approved = mgr.get("/team?year=2026&month=8&status=approved&group=experts").text      # the expert sheet is only submitted
+    assert "No on-call intervention recorded" in approved
+    assert "style=" not in experts and "style=" not in others

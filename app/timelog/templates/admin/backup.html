@@ -12,8 +12,6 @@
       <button class="btn btn-primary">Back up now</button>
     </form>
   </div>
-  <p class="help">A backup is a compressed file holding <strong>every table</strong> of the database ({{ database }}): users, declarations, signatures, settings and the audit log.
-    Files are written to <code>{{ backup_dir }}</code> on the server.</p>
   <div class="banner banner-info"><strong>Encrypted:</strong> every backup is encrypted with AES-256-GCM (key derived from a passphrase with a random salt per file).
     The passphrase comes from <code>{{ key_source }}</code>{% if key_source == "SECRET_KEY" %}: set <code>BACKUP_PASSPHRASE</code> in <code>.env</code> to use an independent passphrase, and store it in a password manager{% endif %}.
     <strong>Without it a backup cannot be read</strong>, so keep it separate from the backups themselves.</div>
@@ -45,11 +43,6 @@
       <input type="number" name="keep" min="1" max="365" value="{{ sch.keep }}" required></label>
     <div class="actions span-all"><button class="btn btn-primary">Save schedule</button></div>
   </form>
-  <p class="help">
-    {% if sch.enabled %}Next run: <strong>{{ next_run|datetime }}</strong>. {% else %}Scheduled backups are <strong>off</strong>. {% endif %}
-    The oldest automatic backups beyond the number to keep are deleted; manual, uploaded and pre-restore backups are never removed automatically.
-    Times are in UTC. The schedule is checked every minute while the application runs.
-  </p>
 </section>
 
 <section class="card">
@@ -87,7 +80,6 @@
     </tbody>
   </table>
   </div>
-  <p class="help"><strong>Restore</strong> replaces the whole content of the database with the backup (users, sheets, settings, audit log). A safety copy of the current state is written first ("pre-restore"). You are signed out afterwards because the accounts are those of the backup.</p>
   {% else %}
   <p class="muted">No backup yet.</p>
   {% endif %}
@@ -95,7 +87,6 @@
 
 <section class="card">
   <h2>Upload a backup</h2>
-  <p class="help">Add a backup file made earlier (for example on another server) to the list above. It is decrypted and checked first, then stored encrypted with this server's key; nothing is restored until you restore it from the list. If the file was made with a different passphrase, enter that passphrase. Maximum 200 MB.</p>
   <form method="post" action="/admin/backup/upload" enctype="multipart/form-data" class="form-grid">
     <input type="hidden" name="csrf_token" value="{{ csrf }}">
     <label>Backup file (.tlbk)

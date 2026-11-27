@@ -179,3 +179,21 @@ def test_prune_only_removes_old_automatic_backups(browser, users, settings, tmp_
     assert backup.prune_auto(d, 2) == 1
     names = [b.name for b in backup.list_backups(d)]
     assert "timelog-20260101-000001-auto.json.gz" not in names and len(names) == 4
+
+
+def test_backup_restores_saved_out_of_hours_datasets(browser, db, users, settings, tmp_path):
+    from timelog.models import OohDataset, OohIntervention
+    d = _dir(settings, tmp_path)
+    mgr, admin = browser("manager"), browser("admin")
+    from test_ooh_report import ROWS, _save
+    _save(mgr, ROWS, "Kept by the backup")
+    admin.post("/admin/backup/create")
+    name = backup.list_backups(d)[0].name
+    with SessionLocal() as s:
+        s.query(OohIntervention).delete()
+        s.query(OohDataset).delete()
+        s.commit()
+    admin.post(f"/admin/backup/restore/{name}", {"confirm": "RESTORE"})
+    with SessionLocal() as s:
+        ds = s.query(OohDataset).one()
+        assert ds.name == "Kept by the backup" and len(ds.interventions) == 1

@@ -17,6 +17,8 @@ Demo data (fictional users); the interface is the same in production.
 | ![Overtime](docs/screenshots/overtime.png) | ![Approvals](docs/screenshots/approvals.png) |
 | **Statistics**: team status, totals and late claims | **Payroll**: reports for Finance and the sent-to-Finance record |
 | ![Statistics](docs/screenshots/statistics.png) | ![Payroll](docs/screenshots/payroll.png) |
+| **Analysis** (managers, admins): out-of-hours hours per person and day type from a ServiceNow export, in Experts and Officers tabs, with the monthly trend; datasets can be saved, edited and deleted | |
+| ![Analysis](docs/screenshots/ooh.png) | |
 
 ## Stack
 The app runs as three containers (Docker Compose). Only `proxy` publishes ports.
@@ -161,11 +163,11 @@ After LDAP works, set `LOCAL_LOGIN_ADMIN_ONLY=true`. This keeps only the local b
 | Signature | If the administrator enables it (Admin › Settings), employees draw a signature and confirm a statement when submitting; managers see it with an integrity check. |
 | Employee (cont.) | When called during on-call duty, log the intervention (hours, ServiceNow #, description) on the **overtime** sheet only. Entries on on-call days are recognised automatically. |
 | Expert | On-call only. An intervention doubles that day's on-call rate. No overtime. |
-| Line manager | **Approvals**: approve, or reject with a comment, the sheets of direct reports and (skip-level) of everyone below them. **Statistics**: status and totals of everyone below them. |
+| Line manager | **Approvals**: approve, or reject with a comment, the sheets of direct reports and (skip-level) of everyone below them. **Statistics**: status and totals of everyone below them. **Analysis**: upload a ServiceNow export and see out-of-hours intervention hours per person and trend . |
 | IT Procurement | **Payroll**: downloads the on-call and overtime reports of the whole organisation (work month + everything validated late), and **records that they were sent to Finance**. That closes the payroll period: anything approved afterwards is paid the following month and the employee is notified. Cannot see individual declarations. |
-| Admin | Users (manager, grade, Expert/Admin flags, local accounts), grades and on-call rates, legal holidays (with `.ics` import), TIL factors, settings (e.g. hide on-call amounts from employees), audit log. Can reopen an approved sheet. |
+| Admin | **Import History**: backfill past months from the Finance on-call and overtime workbooks (dry run first; sheets are created approved and marked as sent). Users (manager, grade, Expert/Admin flags, local accounts), grades and on-call rates, legal holidays (with `.ics` import), TIL factors, settings (e.g. hide on-call amounts from employees), audit log. Can reopen an approved sheet. |
 
-Employees have a built-in **User Guide** (nav tab before Admin) explaining how to file on-call and overtime.
+Everyone has a built-in **User Guide** (nav tab before Admin) with screenshots: how to file on-call and overtime and the manager parts. Administrators also have **Admin › Documentation** (SSL, LDAP, operations).
 
 Colleagues never see each other's declarations. Managers see only the people below them in the hierarchy.
 

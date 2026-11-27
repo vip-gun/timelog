@@ -3,7 +3,7 @@
 Without a password argument a random one is generated and printed once (no password in the code).
 
 Hierarchy:  head (dept head) -> manager (line manager) -> alice (normal), bob (expert)
-            manager -> carol (normal);  head -> dave (normal, other team)
+            manager -> carol (normal), erin (expert);  head -> dave (normal, other team)
 """
 import secrets
 import sys
@@ -23,6 +23,7 @@ DEMO_USERS = [
     ("alice", "Alice", "Normal", "Production", "manager", False),
     ("bob", "Bob", "Expert", "Production", "manager", True),
     ("carol", "Carol", "Normal", "Production", "manager", False),
+    ("erin", "Erin", "Expert", "Production", "manager", True),
     ("dave", "Dave", "Other", "Service Desk", "head", False),
 ]
 

@@ -5,6 +5,7 @@
   <a href="/admin/teams" class="{{ 'active' if request.url.path.startswith('/admin/teams') }}">Teams</a>
   <a href="/admin/sheets" class="{{ 'active' if request.url.path.startswith('/admin/sheets') }}">Submissions</a>
   <a href="/admin/grades" class="{{ 'active' if request.url.path.startswith('/admin/grades') }}">Grades &amp; on-call rates</a>
+  <a href="/admin/import" class="{{ 'active' if request.url.path.startswith('/admin/import') }}">Import History</a>
   <a href="/admin/holidays" class="{{ 'active' if request.url.path.startswith('/admin/holidays') }}">Legal holidays</a>
   {% if features.til %}<a href="/admin/rules" class="{{ 'active' if request.url.path.startswith('/admin/rules') }}">TIL factors</a>{% endif %}
   <a href="/admin/backup" class="{{ 'active' if request.url.path.startswith('/admin/backup') }}">Backup</a>

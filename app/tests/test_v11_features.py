@@ -19,7 +19,7 @@ def test_time_fields_accept_typing_and_suggest_15_minute_steps(browser, users):
     assert 'name="start"' in page and 'name="end"' in page and 'list="ot-times"' in page and 'type="time"' not in page
     for value in ("00:00", "00:15", "08:45", "23:45", "24:00"):
         assert f'<option value="{value}">' in page
-    assert '<option value="00:10">' not in page and "15-minute steps" in page
+    assert '<option value="00:10">' not in page and "15-minute steps" in browser("alice").get("/guide").text
 
 
 def test_overtime_breakdown_by_day_type_day_and_night(browser, db, users):
@@ -34,7 +34,7 @@ def test_overtime_breakdown_by_day_type_day_and_night(browser, db, users):
 
 def test_documentation_shows_rates(browser, users):
     page = browser("admin").get("/admin/docs").text
-    assert "Rates &amp; calculation" in page and 'id="rates"' in page
+    assert "Rates &amp; calculation" in page and 'id="adm-rates"' in page
     assert "STD" in page and "45.00" in page and "90.00" in page          # on-call rates of the default grade
     assert "HL121" in page and "&times;3.8" in page and "100% + 50% + 200%" in page
 
@@ -134,26 +134,27 @@ def test_current_month_button(browser, users):
 def test_admin_documentation_page(browser, users):
     page = browser("admin").get("/admin/docs")
     assert page.status_code == 200
-    for anchor in ('id="ssl"', 'id="ldap"', "openssl pkcs12", "certs/server.crt", "Test connection"):
+    for anchor in ('id="adm-ssl"', 'id="adm-ldap"', "openssl pkcs12", "certs/server.crt", "Test connection"):
         assert anchor in page.text
     assert "Documentation" in browser("admin").get("/admin/users").text  # in the admin sub-navigation
     assert browser("alice").get("/admin/docs").status_code in (403, 404)
+    assert 'id="adm-ssl"' not in browser("alice").get("/guide").text      # administrator reference is not in the user guide
 
 
 def test_oncall_week_start_is_configurable(browser, db, users):
     admin, alice = browser("admin"), browser("alice")
-    page = alice.get("/oncall/2026/8").text
-    assert "Friday 18:00" in page  # default
+    page = alice.get("/guide").text
+    assert "Friday at 18:00" in page  # default
     admin.post("/admin/settings", {"show_amounts": "1", "til_enabled": "1", "week_start": "0", "handover": "08:00"})
-    page = alice.get("/oncall/2026/8").text
-    assert "Monday 08:00" in page and "Monday to Sunday" in page
+    page = alice.get("/guide").text
+    assert "Monday at 08:00" in page and "following Sunday" in page
     # the week switch now books Monday 2026-08-03 .. Sunday 2026-08-09
     alice.post("/oncall/2026/8", {"wk_2026-08-03": "1", "action": "save"})
     from timelog.models import OnCallDay
     db.expire_all()
     assert sorted(d.date.isoformat() for d in db.query(OnCallDay).all()) == [f"2026-08-0{i}" for i in range(3, 10)]
     admin.post("/admin/settings", {"week_start": "9", "handover": "08:00"})  # invalid: ignored
-    assert "Monday 08:00" in alice.get("/oncall/2026/8").text
+    assert "Monday at 08:00" in alice.get("/guide").text
 
 
 def test_oncall_conflicts_highlighted_for_managers_only(browser, db, users):

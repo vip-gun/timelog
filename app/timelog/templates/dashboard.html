@@ -55,14 +55,5 @@
   </table>
   </div>
 </section>
-<p class="help">
-  {% if not oncall_enabled %}
-  Your team (<strong>{{ user.team }}</strong>) declares overtime only: there is no on-call sheet. Forgot something in a past month? You can log overtime up to {{ settings.overtime_lookback_months }} months back; if that month is already approved, a supplementary sheet is created for your manager to validate.
-  {% elif user.is_expert %}
-  As an <strong>Expert</strong>, you declare interventions directly on your on-call sheet: an on-call day with an intervention is paid twice the daily on-call rate. You cannot file overtime.
-  {% else %}
-  Called during on-call duty? Tick "intervention" on the on-call sheet <em>and</em> log the hours as overtime. Forgot something in a past month? You can log overtime up to {{ settings.overtime_lookback_months }} months back; if that month is already approved, a supplementary sheet is created for your manager to validate.
-  {% endif %}
-</p>
 {% endif %}
 {% endblock %}

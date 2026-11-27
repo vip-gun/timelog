@@ -3,14 +3,14 @@
 {% macro field(attr, label, placeholder="", span=False, help="") -%}
 <label class="{{ 'span-2' if span }}">{{ label }}{% if attr in ldap_custom %} <span class="tag" title="Stored in the database (overrides .env)">custom</span>{% endif %}
   <input name="{{ attr }}" value="{{ ldap[attr] }}" placeholder="{{ placeholder }}" autocomplete="off" spellcheck="false" class="mono-input">
-  {% if help %}<span class="hint">{{ help }}</span>{% endif %}
+  
 </label>
 {%- endmacro %}
 {% macro toggle(attr, label, help="") -%}
 <label class="switch setting">
   <input type="checkbox" name="{{ attr }}" value="1" {% if ldap[attr] %}checked{% endif %}>
   <span class="track"><span class="thumb"></span></span>
-  <span><strong>{{ label }}</strong>{% if attr in ldap_custom %} <span class="tag">custom</span>{% endif %}{% if help %}<br><span class="muted small">{{ help }}</span>{% endif %}</span>
+  <span><strong>{{ label }}</strong>{% if attr in ldap_custom %} <span class="tag">custom</span>{% endif %}</span>
 </label>
 {%- endmacro %}
 {% block content %}
@@ -25,30 +25,27 @@
     <input type="checkbox" name="til_enabled" value="1" {% if til_enabled %}checked{% endif %}>
     <span class="track"><span class="thumb"></span></span>
     <span><strong>Time in lieu (TIL)</strong><br>
-      <span class="muted small">Lets employees choose time off instead of payment for overtime. When off, every overtime entry is paid: the PAID/TIL choice, TIL credits, TIL columns and the TIL factors page are hidden, and new TIL entries are refused. Existing TIL entries stay visible and exported; drafts containing TIL must be re-entered as paid before submission.</span></span>
+      </span>
   </label>
   <label class="switch setting">
     <input type="checkbox" name="signature_required" value="1" {% if signature_required %}checked{% endif %}>
     <span class="track"><span class="thumb"></span></span>
     <span><strong>Require a signature on submission</strong><br>
-      <span class="muted small">Employees draw their signature and confirm the declaration when sending an on-call or overtime sheet to their line manager. The signature is stored with a fingerprint (SHA-256) of the signed content, shown to the manager with an integrity check.</span></span>
+      </span>
   </label>
   <label class="switch setting">
     <input type="checkbox" name="show_amounts" value="1" {% if show_amounts %}checked{% endif %}>
     <span class="track"><span class="thumb"></span></span>
     <span><strong>Show on-call amounts to employees</strong><br>
-      <span class="muted small">When off, employees no longer see the stipend, daily rates or totals on their own sheets and dashboard. Line managers (for the people below them) and administrators always see amounts. Days, interventions and overtime hours remain visible.</span></span>
+      </span>
   </label>
   </div>
   <h2>Payroll cut-off</h2>
   <div class="form-grid">
     <label>Finance cut-off: day of the following month
       <input type="number" name="payroll_cutoff" min="1" max="28" value="{{ payroll_cutoff }}" required></label>
+    <div><a class="btn btn-ghost" href="/payroll/cutoffs">Cut-off calendar</a></div>
   </div>
-  <p class="help">This is the <strong>default</strong> pattern, used for every month without an explicit date. Finance usually sets one specific date per month: enter them in the
-    <a href="/payroll/cutoffs">cut-off calendar</a> (also open to IT Procurement). Upcoming cut-offs:
-    {% for y, m, d, custom in cutoff_schedule %}{{ month_label(*shift_month(y, m, 1)) }} cut-off (work of {{ month_label(y, m) }}): <strong>{{ d|date }}</strong>{% if custom %} (set){% endif %}{{ "; " if not loop.last }}{% endfor %}.</p>
-  <p class="help">Employees declare month n in month n+1, so the cut-off of month n+1 applies to the work of month n: sheets approved up to that date are paid with month n (default pattern: this day of the following month, generally the 5th). Later approvals, and late submissions, are paid with the following month, and the employee is notified. IT Procurement closes a period by recording that the reports were sent to Finance (Payroll page); from then on nothing more is added to it.</p>
 
   <h2>On-call rotation</h2>
   <div class="form-grid">
@@ -61,9 +58,6 @@
         {% for m in range(0, 1440, 30) %}{% set t = '%02d:%02d' % (m // 60, m % 60) %}<option value="{{ t }}" {% if handover == t %}selected{% endif %}>{{ t }}</option>{% endfor %}
       </select></label>
   </div>
-  <p class="help">The rotation runs from this day and time to the same day and time a week later (default: Friday 18:00, so a week is booked Friday to Thursday).
-    The week switch on the on-call sheet books those seven days; the handover time is shown to employees as information, days are always booked whole.
-    Days already booked are not changed.</p>
   <div class="actions"><button class="btn btn-primary">Save settings</button></div>
 </form>
 
@@ -72,7 +66,6 @@
     <h2>LDAP / Active Directory authentication</h2>
     {% if ldap.ldap_enabled %}<span class="badge badge-approved">enabled</span>{% else %}<span class="badge badge-draft">disabled</span>{% endif %}
   </div>
-  <p class="help">Values saved here are stored in the database and override the <code>LDAP_*</code> variables of the <code>.env</code> file (fields marked <span class="tag">custom</span>). Local accounts are always checked first, so a local administrator can still sign in if the directory settings are wrong.</p>
 
   <form method="post" action="/admin/settings/ldap" class="ldap-form">
     <input type="hidden" name="csrf_token" value="{{ csrf }}">
@@ -91,7 +84,7 @@
       </div>
       <label>CA certificate (PEM){% if "ldap_ca_cert_data" in ldap_custom %} <span class="tag">custom</span>{% endif %}
         <textarea name="ldap_ca_cert_data" rows="4" class="mono-input" spellcheck="false" placeholder="-----BEGIN CERTIFICATE-----&#10;… Microsoft PKI root (and issuing) CA …&#10;-----END CERTIFICATE-----">{{ ldap.ldap_ca_cert_data }}</textarea>
-        <span class="hint">Paste the root (and issuing) CA of your Microsoft PKI. If empty, the file <code>{{ ldap.ldap_ca_cert_file or "LDAP_CA_CERT_FILE" }}</code> is used.</span>
+        
       </label>
     </fieldset>
 
@@ -102,7 +95,7 @@
         <label class="span-2">Bind password
           {% if secret_status == "database" %}<span class="tag">stored encrypted</span>{% elif secret_status == "environment" %}<span class="tag">from .env</span>{% elif secret_status == "unreadable" %}<span class="tag tag-late">unreadable - re-enter</span>{% endif %}
           <input name="ldap_bind_password" type="password" autocomplete="new-password" placeholder="{{ 'Leave empty to keep the current password' if secret_status in ('database', 'environment') else '' }}">
-          <span class="hint">Write-only: the password is encrypted with a key derived from SECRET_KEY and never displayed. Rotating SECRET_KEY requires re-entering it.</span>
+          
         </label>
       </div>
       {% if secret_status == "database" %}<label class="check small"><input type="checkbox" name="clear_bind_password" value="1"> Remove the stored password (fall back to .env)</label>{% endif %}
@@ -130,7 +123,7 @@
     </fieldset>
 
     <fieldset>
-      <legend>Groups <span class="muted small">(nested membership resolved by AD; leave empty to manage the flag manually)</span></legend>
+      <legend>Groups </legend>
       <div class="form-grid">
         {{ field("ldap_group_required", "Allowed to sign in", "CN=APP-TimeLog-Users,OU=Groups,…", True) }}
         {{ field("ldap_group_admin", "Administrators", "CN=APP-TimeLog-Admins,OU=Groups,…", True) }}
@@ -152,7 +145,6 @@
 
 <div id="ldap-test" class="ldap-test">
   <h3>Test connection</h3>
-  <p class="help">Uses the <strong>saved</strong> settings: connects, binds with the service account and, if a username is given, looks the user up with their groups and manager. No user password is needed.</p>
   <form method="post" action="/admin/settings/ldap/test#ldap-test" class="inline-form">
     <input type="hidden" name="csrf_token" value="{{ csrf }}">
     <label class="sr-only" for="test-username">Username to look up</label>

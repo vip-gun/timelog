@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Analysis{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><span class="eyebrow">Interventions outside working hours</span><h1>Analysis</h1></div>
+</div>
+
+<div class="banner banner-info" role="note">The ServiceNow export must contain the columns <strong>Short description</strong>, <strong>Assigned to</strong>, <strong>Planned start date</strong> and <strong>Planned end date</strong> (<code>YYYY-MM-DD hh:mm:ss</code>) in its first row, otherwise the app cannot read it. The <strong>Number</strong> column (change request number) is read as well and shown with every item. One export can hold Experts and Officers: people are matched to Timelog users by name to tell them apart, and the results are shown in two tabs.</div>
+
+
+<section class="card">
+  <h2>Analyse a ServiceNow export</h2>
+  {% if error %}<div class="banner banner-error" role="alert">{{ error }}</div>{% endif %}
+  <form method="post" action="/analysis" enctype="multipart/form-data" class="form-grid">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <div class="span-2"><label for="ooh-file">Export file</label><input id="ooh-file" type="file" name="file" accept=".xlsx,.csv" required></div>
+    <div><label for="ooh-bs">Business day starts (h)</label><input id="ooh-bs" type="number" name="biz_start" min="0" max="23" value="{{ biz_start }}" required></div>
+    <div><label for="ooh-be">Business day ends (h)</label><input id="ooh-be" type="number" name="biz_end" min="1" max="24" value="{{ biz_end }}" required></div>
+    <div class="span-2"><label class="check" for="ooh-save"><input id="ooh-save" type="checkbox" name="save" value="1"> Save this data as a dataset</label></div>
+    <div class="span-2"><label for="ooh-name">Dataset name (optional)</label><input id="ooh-name" name="name" maxlength="128"></div>
+    <div><button class="btn btn-primary">Analyse</button></div>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Saved datasets</h2>
+  {% if datasets %}
+  <form method="get" action="/analysis/view">
+    <input type="hidden" name="biz_start" value="{{ biz_start }}"><input type="hidden" name="biz_end" value="{{ biz_end }}">
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th scope="col"><span class="sr-only">Select</span></th><th scope="col">Name</th><th scope="col" class="r">Interventions</th><th scope="col" class="r">People</th><th scope="col">Period</th><th scope="col">Saved</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+      <tbody>
+        {% for d in datasets %}
+        <tr>
+          <td><input type="checkbox" name="ids" value="{{ d.ds.id }}" id="ds-{{ d.ds.id }}" aria-label="Select {{ d.ds.name }}"></td>
+          <th scope="row"><a href="/analysis/datasets/{{ d.ds.id }}">{{ d.ds.name }}</a>{% if d.ds.source_filename %} <span class="muted small">{{ d.ds.source_filename }}</span>{% endif %}</th>
+          <td class="r">{{ d.rows }}</td><td class="r">{{ d.people }}</td>
+          <td class="nowrap">{% if d.first %}{{ d.first|date }} - {{ d.last|date }}{% endif %}</td>
+          <td class="nowrap">{{ d.ds.created_at|datetime }}{% if d.ds.created_by %} <span class="muted small">{{ d.ds.created_by.full_name }}</span>{% endif %}</td>
+          <td class="r nowrap"><a class="btn btn-ghost btn-sm" href="/analysis/datasets/{{ d.ds.id }}">{% if can_edit(d.ds) %}Edit{% else %}Open{% endif %}</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table></div>
+    <div class="actions"><button class="btn btn-primary">Visualise selected</button></div>
+  </form>
+  {% else %}
+  <p class="muted">Nothing saved yet. Tick <strong>Save this data as a dataset</strong> when you analyse an export.</p>
+  {% endif %}
+</section>
+
+{% if unmatched %}
+<div class="banner banner-info" role="status"><strong>{{ unmatched|length }}</strong> name(s) in the data match no single Timelog user and are left out of both populations: {{ unmatched[:15]|join(", ") }}{% if unmatched|length > 15 %}, ...{% endif %}.</div>
+{% endif %}
+{% if panes %}
+<div class="docs-layout pane-layout">
+  <nav class="subnav docs-toc pane-menu" aria-label="Population">
+    {% for p in panes %}<a href="#pane-{{ p.key }}">{{ p.label }}</a>{% endfor %}
+  </nav>
+  <div class="docs-body panes">
+    {% for p in panes %}
+    <section class="pane" id="pane-{{ p.key }}">
+      <h2>{{ p.label }}</h2>
+      {% if p.ctx %}
+      {% with report=p.ctx.report, hbars=p.ctx.hbars, team_chart=p.ctx.team_chart, people_charts=p.ctx.people_charts, heat=p.ctx.heat, types=p.ctx.types, type_labels=p.ctx.type_labels, mlabel=p.ctx.mlabel, pane_id="an-" ~ p.key %}
+      {% include "_ooh_report.html" %}
+      {% endwith %}
+      {% else %}
+      <p class="muted">No out-of-hours time for {{ p.label|lower }} in this data.</p>
+      {% endif %}
+    </section>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+{% endblock %}

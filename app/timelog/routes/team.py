@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
-from .. import calc, workflow
+from .. import calc, ooh_report, stats_charts, workflow
 from ..access import can_view_team
 from ..db import get_db
 from ..export import late_claims_pending, payroll_sheets, scope_users, work_month_sheets
@@ -25,6 +25,7 @@ def _require_manager(db: Session, me: User) -> None:
 
 @router.get("")
 def overview(request: Request, year: Optional[int] = None, month: Optional[int] = None, team: str = "",
+             months: int = 12, status: str = "all", group: str = "overview",
              me: User = Depends(current_user), db: Session = Depends(get_db)):
     _require_manager(db, me)
     today = dt.date.today()
@@ -54,7 +55,22 @@ def overview(request: Request, year: Optional[int] = None, month: Optional[int] 
     late = [{"sheet": s, "user": by_id[s.user_id], "url": sheet_url(s, me)} for s in paid if s.is_late]
     pending_late = [{"sheet": s, "user": by_id[s.user_id], "url": sheet_url(s, me)}
                     for s in late_claims_pending(db, users, year, month)]
+    months = months if months in (6, 12, 24) else 12
+    status = status if status in stats_charts.STATUS_SETS else "all"
+    window = stats_charts.month_window(year, month, months)
+    group = "officers" if group in ("officers", "non-experts") else ("experts" if group == "experts" else "overview")
+    charts = None
+    if group == "overview":
+        pass
+    elif group == "experts":       # on-call days with an intervention (Experts record interventions on the on-call sheet)
+        rep = stats_charts.intervention_report(db, [u for u in users if u.is_expert], window, stats_charts.STATUS_SETS[status])
+        charts = ooh_report.chart_context(rep, digits=0) if rep.people else None
+    else:                        # overtime hours (only non-Experts file overtime)
+        rep = stats_charts.overtime_report(db, [u for u in users if not u.is_expert], window, stats_charts.STATUS_SETS[status])
+        charts = ooh_report.chart_context(rep) if rep.people else None
     return render(request, "team.html", {
+        "chart_months": months, "chart_status": status,
+        "chart_group": group, "charts": charts,
         "year": year, "month": month, "team": team, "teams": teams, "rows": rows, "totals": totals,
         "late": late, "pending_late": pending_late, "paid_count": len(paid),
     })

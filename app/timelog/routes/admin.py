@@ -22,6 +22,7 @@ from ..calendar_utils import parse_hhmm
 from ..config import get_settings
 from ..ldap_auth import LdapUnavailable, diagnose, lookup_users, sync_user
 from ..db import get_db, get_engine
+from .. import history_import as history
 from ..ics_import import MAX_BYTES, IcsError, parse_ics
 from .. import teams as team_utils
 from ..models import APPROVED, DAY_TYPES, SETTING_ONCALL_HANDOVER, SETTING_ONCALL_WEEK_START, SETTING_PAYROLL_CUTOFF, SETTING_SHOW_AMOUNTS, SETTING_SIGNATURE_REQUIRED, SETTING_TIL_ENABLED, AppSetting, AuditLog, Grade, Holiday, Notification, OnCallDay, OvertimeEntry, OvertimeRule, PayrollRun, PayrollRunItem, SavedSignature, Sheet, Signature, Team, User, utcnow
@@ -689,6 +690,39 @@ def unarchive_user(request: Request, user_id: int, me: User = Depends(admin_user
     db.commit()
     flash(request, f"User {user.username} restored and active again.", "success")
     return redirect(f"/admin/users/{user_id}")
+
+
+# ------------------------------------------------------------------ history import
+@router.get("/import")
+def import_page(request: Request):
+    return render(request, "admin/import.html", {"outcome": None, "dry": True, "error": None})
+
+
+@router.post("/import", dependencies=[Depends(verify_csrf)])
+async def import_history(request: Request, oncall_file: List[UploadFile] = File(default=[]), overtime_file: List[UploadFile] = File(default=[]),
+                         dry_run: str = Form(""), me: User = Depends(admin_user), db: Session = Depends(get_db)):
+    """Backfill past on-call / overtime from the Finance workbooks (approved + sent to Finance, history only)."""
+    dry = bool(dry_run)
+    oncall, overtime, warnings = [], [], []
+    try:
+        for uploads, parse, bucket in ((oncall_file, history.parse_oncall, oncall), (overtime_file, history.parse_overtime, overtime)):
+            for upload in uploads[:40]:
+                if not upload.filename:
+                    continue
+                try:
+                    recs, warn = parse(await upload.read(history.MAX_BYTES + 1))
+                except history.ImportError_ as exc:
+                    raise history.ImportError_(f"{upload.filename}: {exc}") from exc
+                bucket += recs
+                warnings += warn
+        if not oncall and not overtime:
+            raise history.ImportError_("Choose at least one workbook.")
+    except history.ImportError_ as exc:
+        return render(request, "admin/import.html", {"outcome": None, "dry": dry, "error": str(exc)})
+    outcome = history.apply_import(db, get_settings(), me, oncall, overtime, warnings, dry)
+    if not dry:
+        flash(request, f"Imported {len(outcome.created)} sheet(s); {len(outcome.skipped)} skipped.", "success")
+    return render(request, "admin/import.html", {"outcome": outcome, "dry": dry, "error": None})
 
 
 # ------------------------------------------------------------------ holidays

@@ -4,12 +4,19 @@
 {% block body %}
 <div class="login-page">
   <section class="login-hero" aria-hidden="true">
-    <a class="brand" href="/">{{ brand_mark() }}{{ settings.app_name }}</a>
+    <svg class="login-art" viewBox="0 0 800 800" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+      <circle class="ring" cx="650" cy="560" r="190"/><path class="hand" d="M650 460v100l66 48"/>
+      <rect class="bar-g" x="40" y="20" width="240" height="24" rx="12"/><rect class="bar-o" x="170" y="64" width="300" height="24" rx="12"/>
+      <rect class="bar-r" x="330" y="108" width="260" height="24" rx="12"/>
+      <rect class="bar-g" x="30" y="640" width="250" height="24" rx="12"/><rect class="bar-o" x="130" y="684" width="230" height="24" rx="12"/>
+      <rect class="bar-n" x="60" y="728" width="200" height="24" rx="12"/>
+    </svg>
+    <a class="brand" href="/">{{ brand_mark() }}<span class="brand-text"><span class="brand-name">{{ settings.app_name }}</span><span class="brand-tag">On-Call &amp; Overtime Tracking</span></span></a>
     <div>
       <h1>On-call &amp; overtime, simply declared.</h1>
       <p>Log your on-call duty and overtime, have them validated by your line manager, and let Finance receive one clean monthly export.</p>
     </div>
-    <span class="small muted"></span>
+    <span></span>
   </section>
   <section class="login-panel">
     <form method="post" action="/login" class="login">

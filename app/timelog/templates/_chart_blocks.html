@@ -1,0 +1,77 @@
+{% from "_chart_macros.html" import legend, columns_svg, items_table with context %}
+{# parameters (optional): unit "h" or "days", noun "Hours"/"Days", what (aria text), tickets_label #}
+{% set u = unit|default("h") %}{% set noun = noun|default("Hours") %}{% set what = what|default("Out-of-hours hours") %}{% set tl = tickets_label if tickets_label is defined else "Interventions" %}
+{% macro num(v) %}{% if u == "h" %}{{ "%.1f"|format(v) }}{% else %}{{ "%d"|format(v) }}{% endif %}{% endmacro %}
+{% set g = report.grand %}{% set pfx = pane_id|default("x") %}
+<section class="card">
+  <h2>{{ noun }} per person</h2>
+  {{ legend() }}
+  <button type="button" class="chart-open" data-dialog="dlg-{{ pfx }}-1" aria-label="Show the items behind this chart">
+  <svg class="chart" viewBox="0 0 {{ hbars.w }} {{ hbars.h }}" role="img" aria-label="{{ what }} per person, by day type">
+    {% for r in hbars.rows %}
+    <text class="axis name" x="{{ hbars.label_w - 10 }}" y="{{ r.y + hbars.bar_h / 2 + 4 }}" text-anchor="end">{{ r.name }}</text>
+    {% for s in r.segs %}<rect class="t-{{ s.t }}" x="{{ s.x }}" y="{{ r.y }}" width="{{ s.w }}" height="{{ hbars.bar_h }}"><title>{{ r.name }} · {{ type_labels[s.t] }}: {{ s.h }} {{ u }}</title></rect>{% endfor %}
+    <text class="axis val" x="{{ r.end }}" y="{{ r.y + hbars.bar_h / 2 + 4 }}">{{ r.total }} {{ u }}</text>
+    {% endfor %}
+    <line class="grid-line" x1="{{ hbars.label_w }}" x2="{{ hbars.w - 70 }}" y1="{{ hbars.axis_y }}" y2="{{ hbars.axis_y }}"/>
+    {% for t in hbars.xticks %}<line class="grid-line" x1="{{ t.x }}" x2="{{ t.x }}" y1="{{ hbars.axis_y }}" y2="{{ hbars.axis_y + 5 }}"/><text class="axis" x="{{ t.x }}" y="{{ hbars.axis_y + 18 }}" text-anchor="middle">{{ t.text }}</text>{% endfor %}
+    <text class="axis title" x="{{ hbars.xt.x }}" y="{{ hbars.xt.y }}" text-anchor="middle">{{ noun }}</text>
+    <text class="axis title" transform="rotate(-90 {{ hbars.yt.x }} {{ hbars.yt.y }})" x="{{ hbars.yt.x }}" y="{{ hbars.yt.y }}" text-anchor="middle">Person</text>
+  </svg>
+  <span class="chart-hint">Click the chart to list the items</span>
+  </button>
+  <dialog id="dlg-{{ pfx }}-1" class="chart-dialog" aria-label="Items behind this chart"><div class="chart-dialog-card"><header><h3>Items behind this chart</h3><button type="button" class="btn btn-ghost btn-sm" data-close>Close</button></header><div class="chart-items">{{ items_table(report.detail, u) }}</div></div></dialog>
+  <div class="table-wrap">
+    <table class="table">
+      <thead><tr><th scope="col">Person</th>{% for t in types %}<th scope="col" class="r">{{ type_labels[t] }} ({{ u }})</th>{% endfor %}<th scope="col" class="r">Total ({{ u }})</th>{% if tl %}<th scope="col" class="r">{{ tl }}</th>{% endif %}</tr></thead>
+      <tbody>
+        {% for p in report.people %}
+        <tr><th scope="row">{{ p }}</th>{% for t in types %}<td class="r">{{ num(report.totals[p][t]) }}</td>{% endfor %}<td class="r"><strong>{{ num(report.person_total(p)) }}</strong></td>{% if tl %}<td class="r">{{ report.tickets.get(p, 0) }}</td>{% endif %}</tr>
+        {% endfor %}
+      </tbody>
+      <tfoot><tr><td>Total</td>{% for t in types %}<td class="r">{{ num(g[t]) }}</td>{% endfor %}<td class="r">{{ num(report.grand_total) }}</td>{% if tl %}<td class="r">{{ report.tickets.values()|sum }}</td>{% endif %}</tr></tfoot>
+    </table>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Evolution per month</h2>
+  {{ legend() }}
+  <button type="button" class="chart-open" data-dialog="dlg-{{ pfx }}-2" aria-label="Show the items behind this chart">
+  {{ columns_svg(team_chart, what ~ " per month, whole team", noun, "Month") }}
+  <span class="chart-hint">Click the chart to list the items</span>
+  </button>
+  <dialog id="dlg-{{ pfx }}-2" class="chart-dialog" aria-label="Items behind this chart"><div class="chart-dialog-card"><header><h3>Items behind this chart</h3><button type="button" class="btn btn-ghost btn-sm" data-close>Close</button></header><div class="chart-items">{{ items_table(report.detail, u) }}</div></div></dialog>
+</section>
+
+<section class="card">
+  <h2>Trend per person</h2>
+  {{ legend() }}
+  <div class="small-multiples">
+    {% for pc in people_charts %}
+    <figure class="mini">
+      <figcaption><strong>{{ pc.name }}</strong><span class="muted">{{ pc.total }} {{ u }}</span></figcaption>
+      <button type="button" class="chart-open" data-dialog="dlg-{{ pfx }}-3-{{ loop.index }}" aria-label="Show the items of {{ pc.name }}">
+  {{ columns_svg(pc.chart, "Monthly " ~ what|lower ~ " of " ~ pc.name, noun, "Month") }}
+  <span class="chart-hint">Click the chart to list the items</span>
+  </button>
+  <dialog id="dlg-{{ pfx }}-3-{{ loop.index }}" class="chart-dialog" aria-label="Items of {{ pc.name }}"><div class="chart-dialog-card"><header><h3>Items of {{ pc.name }}</h3><button type="button" class="btn btn-ghost btn-sm" data-close>Close</button></header><div class="chart-items">{{ items_table(report.detail|selectattr("person", "equalto", pc.name)|list, u) }}</div></div></dialog>
+    </figure>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="card">
+  <h2>{{ noun }} per person and month</h2>
+  <div class="table-wrap">
+    <table class="table heat">
+      <thead><tr><th scope="col">Person</th>{% for m in report.months %}<th scope="col" class="r">{{ mlabel(m) }}</th>{% endfor %}<th scope="col" class="r">Total</th></tr></thead>
+      <tbody>
+        {% for r in heat %}
+        <tr><th scope="row">{{ r.name }}</th>{% for c in r.cells %}<td class="r heat-{{ c.level }}">{% if c.h %}{{ num(c.h) }}{% else %}<span class="muted">·</span>{% endif %}</td>{% endfor %}<td class="r"><strong>{{ r.total }}</strong></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+

@@ -3,7 +3,6 @@
 {% block content %}
 {% include "admin/_nav.html" %}
 <h1>Time-in-lieu (TIL) factors</h1>
-<p class="help">TIL credit = (hours − night hours) × day factor + night hours × night factor. Defaults reproduce the payroll premiums: weekday/Saturday +50%, Sunday +70%, legal holiday +200%, night +30%.</p>
 <form method="post" action="/admin/rules" class="card">
   <input type="hidden" name="csrf_token" value="{{ csrf }}">
   <table class="table">

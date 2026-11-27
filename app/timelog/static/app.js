@@ -33,6 +33,19 @@
     if (ev.key === "Escape") document.querySelectorAll("details.bell[open]").forEach(function (d) { d.removeAttribute("open"); });
   });
 
+  // Chart popups: <button data-dialog="id"> opens <dialog id="id">; Close button, Esc and a click on the backdrop close it
+  document.querySelectorAll("[data-dialog]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var dlg = document.getElementById(btn.getAttribute("data-dialog"));
+      if (dlg && typeof dlg.showModal === "function") { dlg.showModal(); }
+    });
+  });
+  document.querySelectorAll("dialog.chart-dialog").forEach(function (dlg) {
+    dlg.addEventListener("click", function (ev) {
+      if (ev.target === dlg || (ev.target.closest && ev.target.closest("[data-close]"))) { dlg.close(); }
+    });
+  });
+
   // Auto-submit selects: <select data-autosubmit>
   document.querySelectorAll("select[data-autosubmit]").forEach(function (sel) {
     sel.addEventListener("change", function () { sel.form.submit(); });

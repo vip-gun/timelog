@@ -10,13 +10,13 @@
   <table class="table form-table">
     <tbody>
       <tr class="group"><th scope="colgroup" colspan="3">Identity</th></tr>
-      <tr><th scope="row"><label for="f-username">Username</label></th><td><input id="f-username" name="username" value="{{ u.username if u else '' }}" {% if u %}disabled{% else %}required{% endif %}></td><td class="help">{{ "Source: " ~ u.auth_source if u else "Local account" }}</td></tr>
+      <tr><th scope="row"><label for="f-username">Username</label></th><td><input id="f-username" name="username" value="{{ u.username if u else '' }}" {% if u %}disabled{% else %}required{% endif %}></td><td class="help"></td></tr>
       <tr><th scope="row"><label for="f-first">First name</label></th><td><input id="f-first" name="first_name" value="{{ u.first_name if u else '' }}"></td><td class="help"></td></tr>
       <tr><th scope="row"><label for="f-last">Last name</label></th><td><input id="f-last" name="last_name" value="{{ u.last_name if u else '' }}"></td><td class="help"></td></tr>
-      <tr><th scope="row"><label for="f-display">Display name</label></th><td><input id="f-display" name="display_name" value="{{ u.display_name if u else '' }}"></td><td class="help">Optional; replaces first + last name.</td></tr>
+      <tr><th scope="row"><label for="f-display">Display name</label></th><td><input id="f-display" name="display_name" value="{{ u.display_name if u else '' }}"></td><td class="help"></td></tr>
       <tr><th scope="row"><label for="f-email">E-mail</label></th><td><input id="f-email" type="email" name="email" value="{{ u.email if u else '' }}"></td><td class="help"></td></tr>
       {% if not u or u.auth_source == "local" %}
-      <tr><th scope="row"><label for="f-password">{{ "New password" if u else "Password" }}</label></th><td><input id="f-password" type="password" name="password" autocomplete="new-password" minlength="10" {% if not u %}required{% endif %}></td><td class="help">{{ "Leave empty to keep the current one. " if u }}At least 10 characters.</td></tr>
+      <tr><th scope="row"><label for="f-password">{{ "New password" if u else "Password" }}</label></th><td><input id="f-password" type="password" name="password" autocomplete="new-password" minlength="10" {% if not u %}required{% endif %}></td><td class="help"></td></tr>
       {% endif %}
 
       <tr class="group"><th scope="colgroup" colspan="3">Organisation</th></tr>
@@ -32,18 +32,17 @@
         <select id="f-grade" name="grade_id">
           <option value="">default grade</option>
           {% for g in grades %}<option value="{{ g.id }}" {% if u and u.grade_id == g.id %}selected{% endif %}>{{ g.code }} – {{ g.name }}</option>{% endfor %}
-        </select></td><td class="help">On-call daily rates.</td></tr>
+        </select></td><td class="help"></td></tr>
 
       <tr class="group"><th scope="colgroup" colspan="3">Roles &amp; access</th></tr>
-      <tr><th scope="row"><label for="f-expert">Expert</label></th><td><input id="f-expert" type="checkbox" name="is_expert" value="1" {% if u and u.is_expert %}checked{% endif %}></td><td class="help">On-call only; an intervention doubles the day's rate. No overtime.</td></tr>
-      <tr><th scope="row"><label for="f-proc">IT Procurement</label></th><td><input id="f-proc" type="checkbox" name="is_procurement" value="1" {% if u and u.is_procurement %}checked{% endif %}></td><td class="help">Downloads payroll reports (whole organisation) and records them as sent to Finance.</td></tr>
-      <tr><th scope="row"><label for="f-mgmt">Management</label></th><td><input id="f-mgmt" type="checkbox" name="is_management" value="1" {% if u and u.is_management %}checked{% endif %}></td><td class="help">Approval only: no on-call, no overtime. Approves the people reporting to them (set them as their line manager).</td></tr>
-      <tr><th scope="row"><label for="f-admin">Administrator</label></th><td><input id="f-admin" type="checkbox" name="is_admin" value="1" {% if u and u.is_admin %}checked{% endif %}></td><td class="help">Full access to Admin.</td></tr>
-      <tr><th scope="row"><label for="f-active">Active</label></th><td><input id="f-active" type="checkbox" name="is_active" value="1" {% if not u or u.is_active %}checked{% endif %} {% if u and u.is_archived %}disabled{% endif %}></td><td class="help">{{ "Archived: restore the user first." if u and u.is_archived else "Untick to block sign-in." }}</td></tr>
+      <tr><th scope="row"><label for="f-expert">Expert</label></th><td><input id="f-expert" type="checkbox" name="is_expert" value="1" {% if u and u.is_expert %}checked{% endif %}></td><td class="help"></td></tr>
+      <tr><th scope="row"><label for="f-proc">IT Procurement</label></th><td><input id="f-proc" type="checkbox" name="is_procurement" value="1" {% if u and u.is_procurement %}checked{% endif %}></td><td class="help"></td></tr>
+      <tr><th scope="row"><label for="f-mgmt">Management</label></th><td><input id="f-mgmt" type="checkbox" name="is_management" value="1" {% if u and u.is_management %}checked{% endif %}></td><td class="help"></td></tr>
+      <tr><th scope="row"><label for="f-admin">Administrator</label></th><td><input id="f-admin" type="checkbox" name="is_admin" value="1" {% if u and u.is_admin %}checked{% endif %}></td><td class="help"></td></tr>
+      <tr><th scope="row"><label for="f-active">Active</label></th><td><input id="f-active" type="checkbox" name="is_active" value="1" {% if not u or u.is_active %}checked{% endif %} {% if u and u.is_archived %}disabled{% endif %}></td><td class="help"></td></tr>
     </tbody>
   </table>
   {% if u and u.auth_source != "local" %}
-  <p class="help">LDAP account: names, e-mail, team and manager are refreshed at each login unless locked. Admin / Expert / Procurement flags follow the LDAP group when one is configured.</p>
   {% endif %}
   <div class="actions">
     <a class="btn btn-ghost" href="/admin/users">Cancel</a>
@@ -57,7 +56,7 @@
     <tbody>
       <tr>
         <th scope="row">{{ "Restore" if u.is_archived else "Archive" }}</th>
-        <td class="help">{% if u.is_archived %}Archived: sign-in is disabled and the user is hidden; all records are kept.{% else %}For people who left: disables sign-in, hides the user, keeps every sheet and audit entry. Reversible. Direct reports keep this manager until reassigned.{% endif %}</td>
+        <td class="help"></td>
         <td>
           {% if u.is_archived %}
           <form method="post" action="/admin/users/{{ u.id }}/unarchive"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn btn-primary">Restore user</button></form>
@@ -68,12 +67,11 @@
       </tr>
       <tr>
         <th scope="row">Delete</th>
-        <td class="help">Removes the account and its unapproved sheets for good. Refused for users with approved sheets or a recorded payroll run (archive them). Audited.</td>
+        <td class="help"></td>
         <td><form method="post" action="/admin/users/{{ u.id }}/delete" data-confirm="Permanently delete {{ u.username }} and their unapproved sheets? This cannot be undone."><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="btn btn-danger">Delete</button></form></td>
       </tr>
     </tbody>
   </table>
-  <p class="help">To remove a user's approved sheets first, use <a href="/admin/sheets?user_id={{ u.id }}">Submissions</a>.</p>
 </div>
 {% endif %}
 {% endblock %}

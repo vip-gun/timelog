@@ -9,10 +9,6 @@
     <a class="btn btn-ghost" href="/payroll/cutoffs?year={{ year + 1 }}">{{ year + 1 }} &rarr;</a>
   </div>
 </div>
-<p class="help">One cut-off date per month, applying to the <strong>previous month's work</strong>: employees declare June in early July, so the
-  <strong>July</strong> cut-off is the date by which June sheets must be <strong>approved</strong> to be paid with June. A later approval is paid with the following month and the employee is notified.
-  Leave a date empty to use the default pattern (day {{ day }} of the month after the work month{% if user.is_admin %}, set in <a href="/admin/settings">Admin &rsaquo; Settings</a>{% endif %}).
-  Changing a date affects sheets approved from now on; sheets already approved keep their payroll month. Months already sent to Finance are locked.</p>
 <form method="post" action="/payroll/cutoffs" class="card">
   <input type="hidden" name="csrf_token" value="{{ csrf }}">
   <input type="hidden" name="year" value="{{ year }}">

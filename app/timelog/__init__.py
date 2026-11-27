@@ -1,3 +1,3 @@
 """Timelog - on-call & overtime declarations."""
 
-__version__ = "1.18.5"
+__version__ = "2.0.0"
